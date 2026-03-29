@@ -1,0 +1,8 @@
+Flask
+yt-dlp
+gunicorn
+pymongo
+dnspython
+requests
+cachetools
+Flask-Cors

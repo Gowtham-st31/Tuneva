@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Tuneva</title>
+	<link rel="icon" type="image/png" href="{{ url_for('static', filename='tab-logo.png') }}">
+	<style>
+		:root {
+			--bg: #f2f5f8;
+			--panel: #ffffff;
+			--ink: #1e2a35;
+			--muted: #6d7a87;
+			--line: #d8e0e8;
+			--accent: #0a7b5f;
+			--accent-2: #0f8f6e;
+			--warn: #b44d2d;
+			--ok: #1f7a4b;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			font-family: "Segoe UI", Tahoma, sans-serif;
+			color: var(--ink);
+			background:
+				radial-gradient(circle at top right, #dceee7 0%, transparent 48%),
+				radial-gradient(circle at top left, #e5edf8 0%, transparent 45%),
+				var(--bg);
+		}
+		.wrap {
+			max-width: 1240px;
+			margin: 24px auto;
+			padding: 0 18px 28px;
+		}
+		.hero {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-end;
+			gap: 12px;
+			margin-bottom: 18px;
+		}
+		.hero h1 {
+			margin: 0;
+			font-size: 1.9rem;
+			letter-spacing: 0.3px;
+		}
+		.hero p {
+			margin: 6px 0 0;
+			color: var(--muted);
+		}
+		.alert {
+			border-radius: 12px;
+			padding: 10px 12px;
+			margin-bottom: 14px;
+			font-size: 0.94rem;
+		}
+		.alert.ok { background: #e8f7ef; color: var(--ok); border: 1px solid #bde6ce; }
+		.alert.err { background: #fff1ec; color: var(--warn); border: 1px solid #f2c8b8; }
+		.stats {
+			display: grid;
+			grid-template-columns: repeat(4, minmax(160px, 1fr));
+			gap: 12px;
+			margin-bottom: 16px;
+		}
+		.stat {
+			background: var(--panel);
+			border: 1px solid var(--line);
+			border-radius: 16px;
+			padding: 14px;
+			box-shadow: 0 8px 24px rgba(14, 32, 53, 0.06);
+		}
+		.stat h3 {
+			margin: 0;
+			font-size: 0.84rem;
+			color: var(--muted);
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.4px;
+		}
+		.stat p {
+			margin: 8px 0 0;
+			font-size: 1.75rem;
+			font-weight: 700;
+		}
+		.grid {
+			display: grid;
+			grid-template-columns: 1.2fr 1fr;
+			gap: 14px;
+			margin-bottom: 14px;
+		}
+		.card {
+			background: var(--panel);
+			border: 1px solid var(--line);
+			border-radius: 16px;
+			box-shadow: 0 8px 24px rgba(14, 32, 53, 0.06);
+			overflow: hidden;
+		}
+		.card-head {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 10px;
+			padding: 12px 14px;
+			border-bottom: 1px solid var(--line);
+			background: linear-gradient(180deg, #fafdff, #ffffff);
+		}
+		.card-head h2 {
+			margin: 0;
+			font-size: 1rem;
+		}
+		.card-head span {
+			font-size: 0.82rem;
+			color: var(--muted);
+		}
+		.card-body { padding: 12px 14px 14px; }
+		.form-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(120px, 1fr));
+			gap: 10px;
+		}
+		.field {
+			display: flex;
+			flex-direction: column;
+			gap: 5px;
+		}
+		.field.full { grid-column: 1 / -1; }
+		.field label {
+			font-size: 0.84rem;
+			color: var(--muted);
+			font-weight: 600;
+		}
+		input, select, button {
+			font: inherit;
+		}
+		input, select {
+			width: 100%;
+			border: 1px solid var(--line);
+			border-radius: 10px;
+			padding: 9px 10px;
+			background: #fff;
+		}
+		button.primary, button.ghost, button.warn {
+			border: none;
+			border-radius: 10px;
+			padding: 9px 12px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+		button.primary { background: var(--accent); color: #fff; }
+		button.primary:hover { background: var(--accent-2); }
+		button.ghost { background: #eaf1f7; color: #335066; }
+		button.warn { background: #ffe7dd; color: #8f3218; }
+		.actions {
+			margin-top: 10px;
+			display: flex;
+			gap: 8px;
+		}
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		th, td {
+			text-align: left;
+			padding: 9px 8px;
+			border-bottom: 1px solid var(--line);
+			font-size: 0.9rem;
+			vertical-align: middle;
+		}
+		th {
+			font-size: 0.78rem;
+			text-transform: uppercase;
+			color: var(--muted);
+			letter-spacing: 0.45px;
+		}
+		tr:last-child td { border-bottom: none; }
+		.badge {
+			display: inline-flex;
+			align-items: center;
+			border-radius: 999px;
+			padding: 3px 8px;
+			font-size: 0.74rem;
+			font-weight: 700;
+		}
+		.badge.ok { background: #e6f5eb; color: #1d7b4c; }
+		.badge.blocked { background: #ffebe4; color: #9a391f; }
+		.songs-list {
+			max-height: 220px;
+			overflow: auto;
+			border: 1px solid var(--line);
+			border-radius: 10px;
+			padding: 8px 10px;
+			background: #fcfeff;
+		}
+		.songs-list p {
+			margin: 8px 0;
+			padding-bottom: 8px;
+			border-bottom: 1px dashed #dce6ef;
+			font-size: 0.88rem;
+		}
+		.songs-list p:last-child { border-bottom: none; padding-bottom: 0; }
+		.playlist-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+		}
+		.playlist-row form {
+			margin: 0;
+		}
+		@media (max-width: 1080px) {
+			.stats { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+			.grid { grid-template-columns: 1fr; }
+		}
+	</style>
+</head>
+<body>
+	<div class="wrap">
+		<header class="hero">
+			<div>
+				<h1>Tuneva Admin Dashboard</h1>
+				<p>Manage imports, users, and catalog growth in one place.</p>
+			</div>
+		</header>
+
+		{% if message %}
+			<div class="alert ok">{{ message }}</div>
+		{% endif %}
+		{% if error %}
+			<div class="alert err">{{ error }}</div>
+		{% endif %}
+
+		<section class="stats">
+			<article class="stat"><h3>Total Users</h3><p>{{ total_users }}</p></article>
+			<article class="stat"><h3>Live Users (15m)</h3><p>{{ live_users }}</p></article>
+			<article class="stat"><h3>Playlists</h3><p>{{ total_playlists }}</p></article>
+			<article class="stat"><h3>Songs</h3><p>{{ total_songs }}</p></article>
+		</section>
+
+		<section class="grid">
+			<article class="card">
+				<div class="card-head">
+					<h2>Import Playlist</h2>
+					<span>Add playlist name and merge only new songs</span>
+				</div>
+				<div class="card-body">
+					<form method="POST">
+						<input type="hidden" name="action" value="import_playlist">
+						<div class="form-grid">
+							<div class="field full">
+								<label>Playlist URL</label>
+								<input name="url" placeholder="https://www.youtube.com/playlist?..." required>
+							</div>
+							<div class="field">
+								<label>Language</label>
+								<select name="language" required>
+									{% for lang in available_languages %}
+										<option value="{{ lang|lower }}">{{ lang }}</option>
+									{% endfor %}
+								</select>
+							</div>
+							<div class="field">
+								<label>Playlist Name</label>
+								<input name="playlist_name" placeholder="Top Tamil Beats" required>
+							</div>
+						</div>
+						<div class="actions">
+							<button class="primary" type="submit">Import / Sync Playlist</button>
+						</div>
+					</form>
+				</div>
+			</article>
+
+			<article class="card">
+				<div class="card-head">
+					<h2>Import Single Song</h2>
+					<span>Add one track into a named playlist</span>
+				</div>
+				<div class="card-body">
+					<form method="POST">
+						<input type="hidden" name="action" value="import_song">
+						<div class="form-grid">
+							<div class="field full">
+								<label>Song URL</label>
+								<input name="song_url" placeholder="https://www.youtube.com/watch?v=..." required>
+							</div>
+							<div class="field">
+								<label>Title (optional)</label>
+								<input name="song_title" placeholder="Song title">
+							</div>
+							<div class="field">
+								<label>Thumbnail URL (optional)</label>
+								<input name="song_thumbnail" placeholder="https://...jpg">
+							</div>
+							<div class="field">
+								<label>Language</label>
+								<select name="song_language" required>
+									{% for lang in available_languages %}
+										<option value="{{ lang|lower }}">{{ lang }}</option>
+									{% endfor %}
+								</select>
+							</div>
+							<div class="field">
+								<label>Playlist Name</label>
+								<input name="song_playlist_name" placeholder="Lo-fi Focus" required>
+							</div>
+						</div>
+						<div class="actions">
+							<button class="primary" type="submit">Import Song</button>
+						</div>
+					</form>
+				</div>
+			</article>
+		</section>
+
+		<section class="grid">
+			<article class="card">
+				<div class="card-head">
+					<h2>Users</h2>
+					<span>Block or unblock accounts</span>
+				</div>
+				<div class="card-body" style="overflow:auto; max-height: 420px;">
+					<table>
+						<thead>
+							<tr>
+								<th>Email</th>
+								<th>Status</th>
+								<th>Language</th>
+								<th>Action</th>
+							</tr>
+						</thead>
+						<tbody>
+							{% for user in users_list %}
+								<tr>
+									<td>{{ user.email }}</td>
+									<td>
+										{% if user.is_blocked %}
+											<span class="badge blocked">Blocked</span>
+										{% else %}
+											<span class="badge ok">Active</span>
+										{% endif %}
+									</td>
+									<td>{{ (user.language or [])|join(', ') or '-' }}</td>
+									<td>
+										<form method="POST">
+											<input type="hidden" name="action" value="user_action">
+											<input type="hidden" name="target_email" value="{{ user.email }}">
+											{% if user.is_blocked %}
+												<input type="hidden" name="op" value="unblock">
+												<button class="ghost" type="submit">Unblock</button>
+											{% else %}
+												<input type="hidden" name="op" value="block">
+												<button class="warn" type="submit">Block</button>
+											{% endif %}
+										</form>
+									</td>
+								</tr>
+							{% else %}
+								<tr><td colspan="4">No users found.</td></tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</div>
+			</article>
+
+			<article class="card">
+				<div class="card-head">
+					<h2>Admin Imported Content</h2>
+					<span>Playlists and song totals</span>
+				</div>
+				<div class="card-body">
+					<div class="songs-list">
+						{% for p in admin_playlists %}
+							<p class="playlist-row">
+								<span>
+									<strong>{{ p.playlist_name or 'Untitled playlist' }}</strong>
+									· {{ p.language or 'n/a' }}
+									· {{ p.song_count or 0 }} songs
+								</span>
+								<form method="POST" onsubmit="return confirm('Delete this playlist?');">
+									<input type="hidden" name="action" value="delete_playlist">
+									<input type="hidden" name="playlist_id" value="{{ p._id }}">
+									<button class="warn" type="submit">Delete</button>
+								</form>
+							</p>
+						{% else %}
+							<p>No imported playlists yet.</p>
+						{% endfor %}
+					</div>
+				</div>
+			</article>
+		</section>
+	</div>
+</body>
+</html>
