@@ -8,3 +8,7 @@ env/
 venv/
 /.vscode/
 node_modules/
+# Ignore packaged builds and downloads
+static/downloads/
+*.apk
+*.zip
