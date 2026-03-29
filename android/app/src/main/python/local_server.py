@@ -1,9 +1,16 @@
 """Local Flask server for Tuneva Android WebView playback."""
 
 import threading
+import traceback
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from stream_cache import get_stream
+
+# 🔥 SAFE IMPORT
+try:
+    from stream_cache import get_stream
+except Exception as e:
+    print("IMPORT ERROR (stream_cache):", e)
+    get_stream = None
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -34,24 +41,41 @@ def local_stream():
         return jsonify(_empty_payload()), 200
 
     try:
+        # 🔥 SAFE CHECK
+        if get_stream is None:
+            print("get_stream not available")
+            return jsonify(_empty_payload()), 200
+
         data = get_stream(url, title=title)
+
         if not data or not data.get("stream_url"):
             return jsonify(_empty_payload()), 200
 
-        return jsonify(
-            {
-                "stream_url": data.get("stream_url", ""),
-                "title": data.get("title", ""),
-                "thumbnail": data.get("thumbnail", ""),
-            }
-        ), 200
+        return jsonify({
+            "stream_url": data.get("stream_url", ""),
+            "title": data.get("title", ""),
+            "thumbnail": data.get("thumbnail", ""),
+        }), 200
+
     except Exception as error:
-        print(f"Local stream error: {error}")
+        print("LOCAL STREAM ERROR:", error)
+        traceback.print_exc()
         return jsonify(_empty_payload()), 200
 
 
 def _run_server(host, port):
-    app.run(host=host, port=int(port), debug=False, threaded=True, use_reloader=False)
+    try:
+        print(f"🚀 Starting Flask on {host}:{port}")
+        app.run(
+            host=host,
+            port=int(port),
+            debug=False,
+            threaded=True,
+            use_reloader=False
+        )
+    except Exception as e:
+        print("SERVER START ERROR:", e)
+        traceback.print_exc()
 
 
 def start_server(host="127.0.0.1", port=5001):
@@ -67,7 +91,13 @@ def start_server(host="127.0.0.1", port=5001):
             daemon=True,
             name="tuneva-local-flask",
         )
-        _server_thread.start()
+
+        try:
+            _server_thread.start()
+            print("✅ Server thread started")
+        except Exception as e:
+            print("THREAD START ERROR:", e)
+            traceback.print_exc()
 
     return True
 
