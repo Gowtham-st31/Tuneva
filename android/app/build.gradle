@@ -38,7 +38,7 @@ android {
 
 chaquopy {
     defaultConfig {
-        buildPython "python"
+        buildPython "C:/Users/gowth/AppData/Local/Programs/Python/Python311/python.exe"
         pip {
             install "flask"
             install "flask-cors"

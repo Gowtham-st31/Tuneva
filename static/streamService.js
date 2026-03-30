@@ -2,6 +2,12 @@
 
     function isMobileUA() {
         try {
+            // If running inside Android app WebView,
+            // do NOT treat as normal mobile browser
+            if (window.Android && typeof window.Android.getLocalUrl === "function") {
+                return false;
+            }
+
             if (navigator.userAgentData && navigator.userAgentData.mobile !== undefined) {
                 return !!navigator.userAgentData.mobile;
             }
@@ -13,7 +19,10 @@
 
     function isAndroidWebViewBridge() {
         try {
-            return !!(global.Android && typeof global.Android.getLocalUrl === 'function');
+            return !!(
+                window.Android &&
+                typeof window.Android.getLocalUrl === "function"
+            );
         } catch (e) {
             return false;
         }
@@ -145,11 +154,11 @@
         getStatus() {
             if (this._isAndroidWebView) {
                 return {
-                    device: 'android-webview',
+                    device: "android-webview",
                     local: this._localAvailable,
                     message: this._localAvailable
-                        ? 'In-app Local Engine Connected'
-                        : 'Starting local engine...'
+                        ? "Local Engine Connected ✅"
+                        : "Starting local engine..."
                 };
             }
 
