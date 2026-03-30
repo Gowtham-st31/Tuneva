@@ -1,5 +1,5 @@
 print("🔥 crt APP.PY LOADED")
-from flask import Flask, render_template, request, redirect, session, jsonify
+from flask import Flask, render_template, request, redirect, session, jsonify, send_from_directory, abort
 from flask_cors import CORS
 from db import users, playlists, otp_requests, user_playlists
 from extractor import extract_playlist
@@ -78,6 +78,25 @@ app.secret_key = "secret"
 # Enable CORS for API endpoints so mobile apps and external clients can call
 # the streaming API. Allow all origins for now to support diverse clients.
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+
+@app.route('/download/<path:filename>')
+def download_file(filename):
+    """Serve files from static/downloads with Content-Disposition attachment.
+
+    This forces the browser to prompt a download and prevents direct inline rendering.
+    """
+    downloads_dir = os.path.join(os.path.dirname(__file__), "static", "downloads")
+
+    # Prevent path traversal
+    requested_path = os.path.normpath(os.path.join(downloads_dir, filename))
+    if not requested_path.startswith(os.path.normpath(downloads_dir)):
+        abort(403)
+
+    if not os.path.exists(requested_path):
+        abort(404)
+
+    return send_from_directory(downloads_dir, filename, as_attachment=True)
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 

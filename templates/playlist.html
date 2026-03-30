@@ -392,26 +392,26 @@ let isLoadingStream = false;
     function downloadEngine() {
         try {
             const a = document.createElement('a');
-            a.href = '/static/downloads/Tuneva.exe';
+            a.href = '/download/Tuneva.exe';
             a.setAttribute('download', 'Tuneva.exe');
             document.body.appendChild(a);
             a.click();
             a.remove();
         } catch (e) {
-            window.location.href = '/static/downloads/Tuneva.exe';
+            window.location.href = '/download/Tuneva.exe';
         }
     }
 
     function downloadApp() {
         try {
             const a = document.createElement('a');
-            a.href = '/static/downloads/Tuneva.apk';
+            a.href = '/download/Tuneva.apk';
             a.setAttribute('download', 'Tuneva.apk');
             document.body.appendChild(a);
             a.click();
             a.remove();
         } catch (e) {
-            window.location.href = '/static/downloads/Tuneva.apk';
+            window.location.href = '/download/Tuneva.apk';
         }
     }
 
