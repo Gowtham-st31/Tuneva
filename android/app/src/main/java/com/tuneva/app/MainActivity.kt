@@ -3,7 +3,14 @@ package com.tuneva.app
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
-import android.webkit.*
+import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import com.chaquo.python.Python
@@ -20,52 +27,57 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 🔥 Create WebView safely
+        // Create WebView safely
         webView = WebView(this)
         setContentView(webView)
 
         configureWebView()
         configureBackNavigation()
 
-        // 🔥 Load UI FIRST (important)
+        // Load UI first
         webView.loadUrl(RAILWAY_URL)
 
-        // 🔥 Start server AFTER UI
+        // Start local python server after UI
         startLocalPythonServer()
     }
 
     private fun startLocalPythonServer() {
-        if (!serverBootRequested.compareAndSet(false, true)) return
+        if (!serverBootRequested.compareAndSet(false, true)) {
+            return
+        }
 
         val activityRef = WeakReference(this)
 
-        Thread {
+        Thread({
             try {
                 val activity = activityRef.get() ?: return@Thread
 
-                Log.d(TAG, "Starting Python...")
+                Log.d(TAG, "Starting Python runtime")
 
                 if (!Python.isStarted()) {
-                    Python.start(AndroidPlatform(activity.applicationContext))
+                    Python.start(
+                        AndroidPlatform(
+                            activity.applicationContext
+                        )
+                    )
                 }
 
                 val py = Python.getInstance()
 
-                Log.d(TAG, "Loading local_server.py")
+                Log.d(TAG, "Loading local_server module")
 
                 val module = py.getModule("local_server")
 
-                // 🔥 SAFE CALL (no args)
                 module.callAttr("start_server")
 
-                Log.d(TAG, "Local server started")
+                Log.d(TAG, "Local python server started on 127.0.0.1:5001")
 
             } catch (e: Exception) {
-                Log.e(TAG, "PYTHON ERROR:", e)
+                Log.e(TAG, "PYTHON ERROR", e)
             } catch (t: Throwable) {
-                Log.e(TAG, "FATAL ERROR:", t)
+                Log.e(TAG, "FATAL ERROR", t)
             }
-        }.start()
+        }, "tuneva-python-server").start()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -74,22 +86,46 @@ class MainActivity : AppCompatActivity() {
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
+        settings.databaseEnabled = true
+        settings.allowContentAccess = true
+        settings.allowFileAccess = true
+        settings.loadsImagesAutomatically = true
         settings.mediaPlaybackRequiresUserGesture = false
-        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        settings.mixedContentMode =
+            WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        settings.javaScriptCanOpenWindowsAutomatically = true
+
+        settings.userAgentString =
+            settings.userAgentString + " TunevaAndroidWebView/1.0"
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-        webView.addJavascriptInterface(AndroidBridge(), "Android")
+        webView.addJavascriptInterface(
+            AndroidBridge(),
+            "Android"
+        )
 
         webView.webViewClient = object : WebViewClient() {
+
+            override fun onPageFinished(
+                view: WebView?,
+                url: String?
+            ) {
+                super.onPageFinished(view, url)
+                Log.d(TAG, "PAGE LOADED: $url")
+            }
+
             override fun onReceivedError(
                 view: WebView,
                 request: WebResourceRequest,
                 error: WebResourceError
             ) {
-                Log.e(TAG, "WebView error: ${error.description}")
+                Log.e(
+                    TAG,
+                    "WEBVIEW ERROR: ${error.description}"
+                )
             }
         }
 
@@ -97,37 +133,53 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureBackNavigation() {
-        backPressedCallback = object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (webView.canGoBack()) {
-                    webView.goBack()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+        backPressedCallback =
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (webView.canGoBack()) {
+                        webView.goBack()
+                    } else {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
                 }
             }
-        }
-        onBackPressedDispatcher.addCallback(this, backPressedCallback)
+
+        onBackPressedDispatcher.addCallback(
+            this,
+            backPressedCallback
+        )
     }
 
     override fun onDestroy() {
         if (::backPressedCallback.isInitialized) {
             backPressedCallback.remove()
         }
-        webView.destroy()
+
+        if (::webView.isInitialized) {
+            webView.stopLoading()
+            webView.destroy()
+        }
+
         super.onDestroy()
     }
 
     private inner class AndroidBridge {
-        @JavascriptInterface
-        fun getLocalUrl(): String = "http://127.0.0.1:5001"
 
         @JavascriptInterface
-        fun isAndroidWebView(): Boolean = true
+        fun getLocalUrl(): String {
+            return "http://127.0.0.1:5001"
+        }
+
+        @JavascriptInterface
+        fun isAndroidWebView(): Boolean {
+            return true
+        }
     }
 
     companion object {
         private const val TAG = "Tuneva"
-        private const val RAILWAY_URL = "https://tuneva.up.railway.app"
+        private const val RAILWAY_URL =
+            "https://tuneva.onrender.com"
     }
 }

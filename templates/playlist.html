@@ -253,6 +253,7 @@
     document.addEventListener("DOMContentLoaded", function() {
     const currentUserKey = "{{ session.get('user_email', 'guest')|e }}".toLowerCase();
     const isPremiumUser = "{{ '1' if is_premium else '0' }}" === "1";
+    const isAdmin = "{{ '1' if is_admin else '0' }}" === "1";
     const rawVideos = JSON.parse(document.getElementById("videosData").textContent || "[]");
     const songs = rawVideos.map((video, index) => ({
         id: index,
@@ -260,8 +261,9 @@
         title: video.title || "Unknown title",
         thumbnail: video.thumbnail || "",
         playlist_title: video.playlist_title || "All Songs",
-        language: video.language || ""
-    })).filter((song) => song.youtube_url);
+        language: video.language || "",
+        blocked: !!video.blocked
+    })).filter((song) => song.youtube_url && (!song.blocked || isAdmin));
 
     const groupedPlaylists = songs.reduce((acc, song) => {
         const key = song.playlist_title || "All Songs";

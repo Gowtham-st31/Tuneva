@@ -197,6 +197,9 @@
 			border-bottom: 1px dashed #dce6ef;
 			font-size: 0.88rem;
 		}
+		.song-item.struck { text-decoration: line-through; color: var(--muted); opacity: 0.75; }
+		.songs-list-inner { display: none; }
+		.songs-list-inner.open { display: block; max-height: 360px; overflow: auto; margin-top: 8px; }
 		.songs-list p:last-child { border-bottom: none; padding-bottom: 0; }
 		.playlist-row {
 			display: flex;
@@ -365,23 +368,57 @@
 			<article class="card">
 				<div class="card-head">
 					<h2>Admin Imported Content</h2>
-					<span>Playlists and song totals</span>
+					<div style="display:flex; gap:8px; align-items:center;">
+						<input id="adminSongSearch" type="search" placeholder="Search songs or URLs" style="min-width:220px;">
+						<select id="adminPlaylistFilter">
+							<option value="all">All playlists</option>
+							{% for p in admin_playlists %}
+								<option value="{{ p._id }}">{{ p.playlist_name or p.language or 'Playlist' }} ({{ p.song_count or 0 }})</option>
+							{% endfor %}
+						</select>
+						<select id="adminViewToggle">
+							<option value="playlist">Playlist view</option>
+							<option value="flat">Flat view</option>
+						</select>
+					</div>
 				</div>
 				<div class="card-body">
 					<div class="songs-list">
 						{% for p in admin_playlists %}
-							<p class="playlist-row">
-								<span>
-									<strong>{{ p.playlist_name or 'Untitled playlist' }}</strong>
-									· {{ p.language or 'n/a' }}
-									· {{ p.song_count or 0 }} songs
-								</span>
-								<form method="POST" onsubmit="return confirm('Delete this playlist?');">
-									<input type="hidden" name="action" value="delete_playlist">
-									<input type="hidden" name="playlist_id" value="{{ p._id }}">
-									<button class="warn" type="submit">Delete</button>
-								</form>
-							</p>
+							<div class="playlist-block" data-playlist-id="{{ p._id }}">
+								<p class="playlist-row">
+									<span>
+										<strong>{{ p.playlist_name or 'Untitled playlist' }}</strong>
+										· {{ p.language or 'n/a' }}
+										· {{ p.song_count or 0 }} songs
+									</span>
+									<form method="POST" onsubmit="return confirm('Delete this playlist?');">
+										<input type="hidden" name="action" value="delete_playlist">
+										<input type="hidden" name="playlist_id" value="{{ p._id }}">
+										<button class="warn" type="submit">Delete</button>
+									</form>
+								</p>
+
+								<div class="songs-list-inner" style="margin-top:8px;">
+									{% if p.songs and p.songs|length %}
+										{% for s in p.songs %}
+											<p class="song-item{% if s.blocked %} struck{% endif %}" data-title="{{ (s.title or s.youtube_url)|lower }}" data-url="{{ s.youtube_url }}">
+												<span class="song-text">{{ loop.index }}. {{ s.title or s.youtube_url }}</span>
+												{% if s.blocked %}<span class="badge blocked">Blocked</span>{% endif %}
+												<form method="POST" onsubmit="return false;" style="display:inline; margin-left:10px;">
+													<input type="hidden" name="action" value="song_action">
+													<input type="hidden" name="playlist_id" value="{{ p._id }}">
+													<input type="hidden" name="song_url" value="{{ s.youtube_url }}">
+													<input type="hidden" name="op" value="{{ 'unblock' if s.blocked else 'block' }}">
+													<button type="button" class="song-action-btn {{ 'ghost' if s.blocked else 'warn' }}" data-playlist-id="{{ p._id }}" data-song-url="{{ s.youtube_url }}" data-op="{{ 'unblock' if s.blocked else 'block' }}">{{ 'Unblock' if s.blocked else 'Block' }}</button>
+												</form>
+											</p>
+										{% endfor %}
+									{% else %}
+										<p>No songs in this playlist.</p>
+									{% endif %}
+								</div>
+							</div>
 						{% else %}
 							<p>No imported playlists yet.</p>
 						{% endfor %}
@@ -390,5 +427,218 @@
 			</article>
 		</section>
 	</div>
+
+	<script>
+document.addEventListener('DOMContentLoaded', function(){
+	const searchInput = document.getElementById('adminSongSearch');
+	const playlistFilter = document.getElementById('adminPlaylistFilter');
+	const viewToggle = document.getElementById('adminViewToggle');
+	const playlistBlocks = Array.from(document.querySelectorAll('.playlist-block'));
+	let flatContainer = null;
+	const originalParents = new Map();
+
+	function normalizeText(s){ return String(s || '').toLowerCase(); }
+
+	function applySearch(){
+		const q = normalizeText(searchInput && searchInput.value || '');
+		if(viewToggle && viewToggle.value === 'flat'){
+			if(!flatContainer) return;
+			const items = Array.from(flatContainer.querySelectorAll('.song-item'));
+			let any=false;
+			items.forEach(it=>{
+				const title = normalizeText(it.dataset.title || it.textContent || '');
+				const url = normalizeText(it.dataset.url || '');
+				const matches = !q || title.indexOf(q) !== -1 || url.indexOf(q) !== -1;
+				it.style.display = matches ? '' : 'none';
+				if(matches) any = true;
+			});
+			flatContainer.style.display = any ? '' : 'none';
+		} else {
+			// If a playlist is selected in the filter, show only that playlist (and open its songs)
+			const selected = playlistFilter ? String(playlistFilter.value || 'all') : 'all';
+			playlistBlocks.forEach(pb=>{
+				const pid = String(pb.dataset.playlistId || pb.getAttribute('data-playlist-id') || '');
+				const songs = Array.from(pb.querySelectorAll('.songs-list-inner > .song-item'));
+				let any=false;
+				songs.forEach(s=>{
+					const title = normalizeText(s.dataset.title || s.textContent || '');
+					const url = normalizeText(s.dataset.url || '');
+					const matches = !q || title.indexOf(q) !== -1 || url.indexOf(q) !== -1;
+					s.style.display = matches ? '' : 'none';
+					if(matches) any = true;
+				});
+
+				// If a playlist is selected, hide other playlists
+				if(selected !== 'all' && pid !== selected){
+					pb.style.display = 'none';
+				} else {
+					pb.style.display = any || selected === 'all' ? '' : 'none';
+				}
+				// ensure songs-list visibility respects collapsed/expanded state
+				const songsInner = pb.querySelector('.songs-list-inner');
+				if(songsInner){
+					if(songsInner.classList.contains('open')){
+						songsInner.style.display = '';
+					} else {
+						songsInner.style.display = 'none';
+					}
+				}
+			});
+		}
+	}
+
+	function createFlatContainer(){
+		const container = document.createElement('div');
+		container.className = 'songs-list';
+		container.id = 'adminFlatSongs';
+		container.style.marginTop = '8px';
+		container.innerHTML = '<p style="margin:6px 0 8px; color: var(--muted)">Flat view: all songs</p>';
+		const mainSongsList = document.querySelector('.card-body > .songs-list');
+		mainSongsList.parentNode.insertBefore(container, mainSongsList);
+		return container;
+	}
+
+	viewToggle && viewToggle.addEventListener('change', function(){
+		if(this.value === 'flat'){
+			if(!flatContainer) flatContainer = createFlatContainer();
+			playlistBlocks.forEach(pb=>{
+				const songs = Array.from(pb.querySelectorAll('.songs-list-inner > p, .songs-list-inner > .song-item'));
+				songs.forEach(s=>{
+					if(!s.classList.contains('song-item')){
+						s.classList.add('song-item');
+						s.dataset.title = (s.textContent || '').toLowerCase();
+						const form = s.querySelector('form');
+						if(form) s.dataset.url = (form.querySelector('input[name="song_url"]')||{}).value || '';
+					}
+					originalParents.set(s, s.parentNode);
+					flatContainer.appendChild(s);
+				});
+				pb.style.display = 'none';
+			});
+			// hide playlist filter when in flat view
+			if(playlistFilter) playlistFilter.style.display = 'none';
+		} else {
+			if(flatContainer){
+				Array.from(flatContainer.querySelectorAll('.song-item')).forEach(s=>{
+					const parent = originalParents.get(s);
+					if(parent) parent.appendChild(s);
+				});
+				flatContainer.parentNode.removeChild(flatContainer);
+				flatContainer = null;
+				originalParents.clear();
+			}
+			playlistBlocks.forEach(pb=> pb.style.display = '');
+			// show playlist filter when back to playlist view
+			if(playlistFilter) playlistFilter.style.display = '';
+		}
+		applySearch();
+	});
+
+	// Playlist-row click => expand/collapse songs and set filter
+	playlistBlocks.forEach(pb=>{
+		const row = pb.querySelector('.playlist-row');
+		const songsInner = pb.querySelector('.songs-list-inner');
+		if(row){
+			row.addEventListener('click', function(ev){
+				// ignore clicks on buttons or inside forms (delete button)
+				if(ev.target && (ev.target.tagName === 'BUTTON' || ev.target.closest('form'))){
+					return;
+				}
+
+				// collapse other playlist song lists
+				playlistBlocks.forEach(other=>{
+					if(other === pb) return;
+					const si = other.querySelector('.songs-list-inner');
+					if(si){ si.classList.remove('open'); si.style.display = 'none'; }
+				});
+
+				if(songsInner){
+					const isOpen = songsInner.classList.toggle('open');
+					songsInner.style.display = isOpen ? '' : 'none';
+				}
+
+				// set playlist filter to this playlist so only it is shown
+				if(playlistFilter){
+					const id = pb.dataset.playlistId || pb.getAttribute('data-playlist-id');
+					playlistFilter.value = id || 'all';
+				}
+				applySearch();
+			});
+		}
+	});
+
+	// playlistFilter change behaviour: show only selected playlist and open songs
+	if(playlistFilter){
+		playlistFilter.addEventListener('change', function(){
+			const val = String(this.value || 'all');
+			if(val === 'all'){
+				playlistBlocks.forEach(pb=>{
+					pb.style.display = '';
+					const si = pb.querySelector('.songs-list-inner');
+					if(si){ si.classList.remove('open'); si.style.display = 'none'; }
+				});
+			} else {
+				playlistBlocks.forEach(pb=>{
+					const pid = String(pb.dataset.playlistId || pb.getAttribute('data-playlist-id') || '');
+					if(pid === val){
+						pb.style.display = '';
+						const si = pb.querySelector('.songs-list-inner');
+						if(si){ si.classList.add('open'); si.style.display = ''; }
+					} else {
+						pb.style.display = 'none';
+					}
+				});
+			}
+			applySearch();
+		});
+	}
+
+	searchInput && searchInput.addEventListener('input', function(){ applySearch(); });
+
+	// AJAX handlers for song action buttons
+	document.querySelectorAll('.song-action-btn').forEach(btn=>{
+		btn.addEventListener('click', function(ev){
+			ev.preventDefault();
+			ev.stopPropagation();
+			const playlist_id = btn.dataset.playlistId;
+			const song_url = btn.dataset.songUrl;
+			const op = btn.dataset.op;
+
+			const body = new URLSearchParams({ action: 'song_action', playlist_id: playlist_id, song_url: song_url, op: op });
+			fetch(window.location.pathname, {
+				method: 'POST',
+				headers: {'X-Requested-With': 'XMLHttpRequest','Content-Type': 'application/x-www-form-urlencoded'},
+				body: body.toString()
+				}).then(r=>r.json()).then(data=>{
+				if(!data || !data.ok){ alert(data && data.error ? data.error : 'Action failed'); return; }
+				const blocked = data.blocked;
+				const songItem = btn.closest('p, .song-item');
+				if(songItem){
+					songItem.classList.toggle('struck', blocked);
+					let badge = songItem.querySelector('.badge.blocked');
+					if(blocked){
+						if(!badge){ badge = document.createElement('span'); badge.className='badge blocked'; badge.textContent='Blocked'; btn.parentNode.insertBefore(badge, btn); }
+						btn.textContent = 'Unblock';
+						btn.classList.remove('warn'); btn.classList.add('ghost');
+						btn.dataset.op = 'unblock';
+					} else {
+						if(badge) badge.remove();
+						btn.textContent = 'Block';
+						btn.classList.remove('ghost'); btn.classList.add('warn');
+						btn.dataset.op = 'block';
+					}
+				}
+
+				// Auto-refresh after a brief delay so counts and other server-derived data update
+				window.setTimeout(() => { try { location.reload(); } catch (e) { /* ignore */ } }, 600);
+			}).catch(err=>{ console.error(err); alert('Request failed'); });
+		});
+	});
+
+	// initial
+	if(viewToggle) viewToggle.value = 'playlist';
+	applySearch();
+});
+	</script>
 </body>
 </html>

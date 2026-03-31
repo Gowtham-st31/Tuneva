@@ -115,7 +115,7 @@ AVAILABLE_LANGUAGES = [
 
 ADMIN_EMAILS = {
     email.strip().lower()
-    for email in (os.getenv("ADMIN_EMAILS") or "tuneva2026@gmail.com").split(",")
+    for email in (os.getenv("ADMIN_EMAILS") or "tuneva2026@gmail.com,tuvena2026@gmail.com").split(",")
     if email.strip()
 }
 
@@ -156,6 +156,31 @@ def _resolve_thumbnail(video):
     if thumb:
         return thumb
     return _thumbnail_from_video_url(video.get("youtube_url"))
+
+
+def _video_key(youtube_url):
+    """Return a canonical key for a youtube URL.
+
+    Prefer the extracted video id when possible, otherwise return a
+    normalized URL string. This is used to compare and store blocked
+    entries in a resilient way across different YouTube URL formats.
+    """
+    if not youtube_url:
+        return None
+    vid = _extract_video_id(youtube_url)
+    if vid:
+        return vid
+    return str(youtube_url).strip().lower()
+
+
+def _key_of(youtube_url):
+    """Safe canonical key for a youtube URL (fallback without relying on other helpers)."""
+    if not youtube_url:
+        return None
+    vid = _extract_video_id(youtube_url)
+    if vid:
+        return vid
+    return str(youtube_url).strip().lower()
 
 
 def _get_user_languages(user):
@@ -253,15 +278,28 @@ def _get_videos_for_languages(languages):
             or "Playlist"
         )
 
+        # Merge live/fallback videos and preserve stored blocked flags (or blocked_urls)
+        stored_videos = playlist_doc.get("videos", []) or []
+        # Map canonical video key -> blocked flag for stored videos
+        stored_blocked_map = {
+            _video_key(v.get("youtube_url")): bool(v.get("blocked"))
+            for v in stored_videos
+            if v.get("youtube_url")
+        }
+        blocked_urls = set(
+            k for k in (_video_key(u) for u in (playlist_doc.get("blocked_urls") or []))
+            if k
+        )
+
         playlist_videos = []
         source_url = str(playlist_doc.get("source_url", "")).strip()
         if source_url:
             playlist_videos = _extract_playlist_live_cached(
                 source_url,
-                fallback_videos=playlist_doc.get("videos", [])
+                fallback_videos=stored_videos
             )
         else:
-            playlist_videos = playlist_doc.get("videos", [])
+            playlist_videos = stored_videos
 
         for video in playlist_videos:
             if not video:
@@ -273,11 +311,20 @@ def _get_videos_for_languages(languages):
                 v["playlist_title"] = playlist_name
 
             video_url = v.get("youtube_url")
-            if video_url and video_url in seen_urls:
+            video_key = _video_key(video_url) or video_url
+
+            # Determine blocked state: stored flag or playlist-level blocked list
+            is_blocked = False
+            if video_key:
+                is_blocked = bool(stored_blocked_map.get(video_key) or (video_key in blocked_urls) or bool(v.get("blocked", False)))
+                v["blocked"] = is_blocked
+
+            # dedupe by canonical key so different URL formats don't duplicate
+            if video_key in seen_urls:
                 continue
 
-            if video_url:
-                seen_urls.add(video_url)
+            if video_key:
+                seen_urls.add(video_key)
 
             all_videos.append(v)
 
@@ -315,6 +362,7 @@ def _get_prioritized_all_videos(user):
 
     all_videos = []
     seen_urls = set()
+    is_admin = _is_admin_user(user or {})
 
     for playlist_doc in playlists.find({}):
         language = str(playlist_doc.get("language", "")).strip().lower()
@@ -324,15 +372,27 @@ def _get_prioritized_all_videos(user):
             or "Playlist"
         )
 
+        # Merge stored blocked flags and playlist-level blocked_urls
+        stored_videos = playlist_doc.get("videos", []) or []
+        stored_blocked_map = {
+            _video_key(v.get("youtube_url")): bool(v.get("blocked"))
+            for v in stored_videos
+            if v.get("youtube_url")
+        }
+        blocked_urls = set(
+            k for k in (_video_key(u) for u in (playlist_doc.get("blocked_urls") or []))
+            if k
+        )
+
         playlist_videos = []
         source_url = str(playlist_doc.get("source_url", "")).strip()
         if source_url:
             playlist_videos = _extract_playlist_live_cached(
                 source_url,
-                fallback_videos=playlist_doc.get("videos", [])
+                fallback_videos=stored_videos
             )
         else:
-            playlist_videos = playlist_doc.get("videos", [])
+            playlist_videos = stored_videos
 
         for video in playlist_videos:
             if not video:
@@ -345,11 +405,24 @@ def _get_prioritized_all_videos(user):
                 v["playlist_title"] = playlist_name
 
             video_url = v.get("youtube_url")
-            if video_url and video_url in seen_urls:
+            video_key = _video_key(video_url) or video_url
+
+            # Determine blocked state
+            is_blocked = False
+            if video_key:
+                is_blocked = bool(stored_blocked_map.get(video_key) or (video_key in blocked_urls) or bool(v.get("blocked", False)))
+                v["blocked"] = is_blocked
+
+            # Skip blocked videos for non-admin users
+            if is_blocked and not is_admin:
                 continue
 
-            if video_url:
-                seen_urls.add(video_url)
+            # Dedupe by canonical key
+            if video_key in seen_urls:
+                continue
+
+            if video_key:
+                seen_urls.add(video_key)
 
             all_videos.append(v)
 
@@ -457,6 +530,9 @@ def login():
         user = _get_current_user()
         if user and not _get_user_languages(user):
             return redirect("/language")
+        # If already an admin, redirect to admin dashboard
+        if _is_admin_user(user):
+            return redirect("/admin")
         return redirect("/playlist")
 
     if request.method == "POST":
@@ -485,6 +561,9 @@ def login():
         session["user_email"] = email
         if not _get_user_languages(user):
             return redirect("/language")
+        # If this account is an admin email, send to admin dashboard
+        if _is_admin_email(email) or _is_admin_user(user):
+            return redirect("/admin")
         return redirect("/playlist")
 
     return render_template("login.html")
@@ -714,8 +793,17 @@ def playlist():
         return redirect("/")
 
     videos = _get_prioritized_all_videos(user)
+    # Debugging: ensure blocked videos are not returned to non-admin users
+    try:
+        if not _is_admin_user(user):
+            blocked_returned = [v.get("youtube_url") for v in videos if v.get("blocked")]
+            if blocked_returned:
+                print("[debug.playlist] WARN: returning blocked videos to non-admin user:", blocked_returned[:20])
+    except Exception as _e:
+        print("[debug.playlist] error while checking blocked flags:", str(_e))
     is_premium = bool(user.get("is_premium", False))
-    return render_template("playlist.html", videos=videos, is_premium=is_premium)
+    is_admin = _is_admin_user(user)
+    return render_template("playlist.html", videos=videos, is_premium=is_premium, is_admin=is_admin)
 
 
 
@@ -811,8 +899,31 @@ def api_user_playlists():
     email = session.get("user_email", "").strip().lower()
 
     if request.method == "GET":
+        # Build a canonical set of blocked video keys across all playlists so
+        # we can hide blocked songs from user-created playlists.
+        blocked_keys = set()
+        for pdoc in playlists.find({}, {"videos": 1, "blocked_urls": 1}):
+            blocked_keys.update(k for k in (_video_key(u) for u in (pdoc.get("blocked_urls") or [])) if k)
+            for vv in (pdoc.get("videos") or []):
+                if vv.get("blocked"):
+                    k = _video_key(vv.get("youtube_url"))
+                    if k:
+                        blocked_keys.add(k)
+
+        print("[debug.api_user_playlists] blocked_keys_count=", len(blocked_keys))
+
         docs = list(user_playlists.find({"user_email": email}).sort("created_at", -1))
-        return jsonify({"ok": True, "playlists": [_serialize_user_playlist(d) for d in docs]})
+        result = []
+        for d in docs:
+            ser = _serialize_user_playlist(d)
+            original_count = len(d.get("songs") or [])
+            filtered = [s for s in (d.get("songs") or []) if _video_key(s) not in blocked_keys]
+            if original_count != len(filtered):
+                print(f"[debug.api_user_playlists] playlist {ser.get('id')} filtered {original_count - len(filtered)} blocked songs")
+            ser["songs"] = filtered
+            result.append(ser)
+
+        return jsonify({"ok": True, "playlists": result})
 
     action = request.form.get("action", "").strip().lower()
     if action == "create":
@@ -946,10 +1057,12 @@ def admin():
             if not language or not playlist_name or not song_url:
                 error = "Song URL, language and playlist name are required."
             else:
+                # Default song doc includes blocked flag (default False)
                 song_doc = {
                     "title": song_title or song_url,
                     "youtube_url": song_url,
-                    "thumbnail": song_thumbnail or _thumbnail_from_video_url(song_url)
+                    "thumbnail": song_thumbnail or _thumbnail_from_video_url(song_url),
+                    "blocked": False
                 }
 
                 existing = playlists.find_one({
@@ -958,10 +1071,17 @@ def admin():
                 })
 
                 if existing:
-                    existing_urls = {
-                        v.get("youtube_url") for v in existing.get("videos", []) if v.get("youtube_url")
+                    existing_keys = {
+                        _video_key(v.get("youtube_url")) for v in existing.get("videos", []) if v.get("youtube_url")
                     }
-                    if song_url in existing_urls:
+                    # Normalize existing blocked urls for comparison
+                    existing_blocked = set(k for k in (_video_key(u) for u in (existing.get("blocked_urls") or [])) if k)
+
+                    # If playlist-level blocked_urls contains this URL key, preserve blocked state
+                    if _video_key(song_url) in existing_blocked:
+                        song_doc["blocked"] = True
+
+                    if _video_key(song_url) in existing_keys:
                         message = "Song already exists in this playlist."
                     else:
                         playlists.update_one(
@@ -979,6 +1099,58 @@ def admin():
                         "updated_at": datetime.utcnow()
                     })
                     message = "Playlist created and song imported."
+
+        elif action == "song_action":
+            # Block / Unblock a specific song in an admin playlist
+            playlist_id = _safe_object_id(request.form.get("playlist_id", ""))
+            song_url = request.form.get("song_url", "").strip()
+            op = request.form.get("op", "").strip().lower()
+            # Validate inputs
+            if not playlist_id or not song_url or op not in {"block", "unblock"}:
+                error = "Invalid song action."
+                print("[admin.song_action] Invalid input:", playlist_id, song_url, op)
+                return jsonify({"ok": False, "error": error}), 400
+
+            is_block = op == "block"
+            print(f"[admin.song_action] playlist_id={playlist_id} song_url={song_url} op={op}")
+
+            # Maintain playlist-level blocked_urls for source-based playlists.
+            # Use canonical video keys so different URL formats match correctly.
+            try:
+                pl = playlists.find_one({"_id": playlist_id}, {"videos": 1, "blocked_urls": 1})
+                if not pl:
+                    return jsonify({"ok": False, "error": "Playlist not found."}), 404
+
+                # build canonical blocked set
+                blocked_set = set(k for k in (_video_key(u) for u in (pl.get("blocked_urls") or [])) if k)
+                target_key = _video_key(song_url)
+                if not target_key:
+                    return jsonify({"ok": False, "error": "Invalid song URL."}), 400
+
+                if is_block:
+                    blocked_set.add(target_key)
+                else:
+                    blocked_set.discard(target_key)
+
+                # persist blocked_urls as canonical keys
+                res_block = playlists.update_one({"_id": playlist_id}, {"$set": {"blocked_urls": list(blocked_set), "updated_at": datetime.utcnow()}})
+
+                # update videos array blocked flags consistently
+                new_videos = []
+                for vv in (pl.get("videos") or []):
+                    vv2 = dict(vv)
+                    vv_key = _video_key(vv2.get("youtube_url"))
+                    vv2["blocked"] = bool(vv_key and vv_key in blocked_set)
+                    new_videos.append(vv2)
+
+                res_v = playlists.update_one({"_id": playlist_id}, {"$set": {"videos": new_videos, "updated_at": datetime.utcnow()}})
+                print("[admin.song_action] update results:", getattr(res_block, 'raw_result', None), getattr(res_v, 'raw_result', None))
+            except Exception as e:
+                print("[admin.song_action] update error:", str(e))
+                return jsonify({"ok": False, "error": "Database update failed."}), 500
+
+            message = f"Song {'blocked' if is_block else 'unblocked'}."
+            return jsonify({"ok": True, "message": message, "playlist_id": str(playlist_id), "song_url": song_url, "blocked": is_block})
 
         elif action == "user_action":
             target_email = request.form.get("target_email", "").strip().lower()
@@ -1013,20 +1185,40 @@ def admin():
     now_ts = int(datetime.utcnow().timestamp())
     live_users = sum(1 for u in all_users if int(u.get("last_time") or 0) >= now_ts - 900)
 
-    admin_playlists = list(playlists.find({}, {"videos": 1, "language": 1, "playlist_name": 1, "created_by": 1, "updated_at": 1, "source_url": 1}))
+    admin_playlists = list(playlists.find({}, {"videos": 1, "language": 1, "playlist_name": 1, "created_by": 1, "updated_at": 1, "source_url": 1, "blocked_urls": 1}))
     admin_playlists_view = []
     total_admin_songs = 0
     for p in admin_playlists:
         source_url = str(p.get("source_url", "")).strip()
+        stored_videos = p.get("videos", []) or []
+        stored_blocked_map = { _video_key(v.get("youtube_url")): bool(v.get("blocked")) for v in stored_videos if v.get("youtube_url") }
+        blocked_urls = set(k for k in (_video_key(u) for u in (p.get("blocked_urls") or [])) if k)
+
         if source_url:
-            live_count = len(_extract_playlist_live_cached(source_url, fallback_videos=p.get("videos", [])))
+            playlist_videos = _extract_playlist_live_cached(source_url, fallback_videos=stored_videos)
         else:
-            live_count = len(p.get("videos", []))
+            playlist_videos = stored_videos
+
+        songs_list = []
+        for video in playlist_videos:
+            if not video:
+                continue
+            v = dict(video)
+            v["thumbnail"] = _resolve_thumbnail(v)
+            video_key = _video_key(v.get("youtube_url")) or v.get("youtube_url")
+            v["blocked"] = bool(stored_blocked_map.get(video_key) or (video_key in blocked_urls) or bool(v.get("blocked", False)))
+            songs_list.append(v)
 
         p_view = dict(p)
-        p_view["song_count"] = live_count
+        # Normalize id to string for templates and client-side matching
+        try:
+            p_view["_id"] = str(p_view.get("_id"))
+        except Exception:
+            pass
+        p_view["songs"] = songs_list
+        p_view["song_count"] = len(songs_list)
         admin_playlists_view.append(p_view)
-        total_admin_songs += live_count
+        total_admin_songs += len(songs_list)
 
     return render_template(
         "admin.html",
