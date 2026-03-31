@@ -161,7 +161,11 @@
                 </div>
                 <p class="app-modal-subtitle">Download Local Engine for best playback (no skips)</p>
                 <div class="app-modal-actions">
-                    <button id="downloadEngineAction" class="app-modal-btn primary" type="button">Download Local Engine</button>
+                    <a href="https://drive.google.com/uc?export=download&id=1AwH870gvywSzLwSueCo5Xbw_9xLV2BXT"
+                       download
+                       class="btn btn-primary">
+                       💻 Download for PC
+                    </a>
                     <button id="downloadEngineContinue" class="app-modal-btn secondary" type="button">Continue without it</button>
                 </div>
             </div>
@@ -176,7 +180,11 @@
                 </div>
                 <p class="app-modal-subtitle">Install Tuneva App for smooth playback (no skips)</p>
                 <div class="app-modal-actions">
-                    <button id="downloadAppAction" class="app-modal-btn primary" type="button">Download App</button>
+                    <a href="https://drive.google.com/uc?export=download&id=1yrQmMX4Hazl-eX1ZBSzoXXmWUCXerJLo"
+                       download
+                       class="btn btn-success">
+                       📱 Download APK
+                    </a>
                     <button id="downloadAppContinue" class="app-modal-btn secondary" type="button">Continue in browser</button>
                 </div>
             </div>
@@ -389,29 +397,34 @@ let isLoadingStream = false;
         }, 180);
     }
 
+    const DOWNLOAD_LINKS = {
+        pc: "https://drive.google.com/uc?export=download&id=1AwH870gvywSzLwSueCo5Xbw_9xLV2BXT",
+        apk: "https://drive.google.com/uc?export=download&id=1yrQmMX4Hazl-eX1ZBSzoXXmWUCXerJLo"
+    };
+
     function downloadEngine() {
         try {
             const a = document.createElement('a');
-            a.href = '/download/Tuneva.exe';
+            a.href = DOWNLOAD_LINKS.pc;
             a.setAttribute('download', 'Tuneva.exe');
             document.body.appendChild(a);
             a.click();
             a.remove();
         } catch (e) {
-            window.location.href = '/download/Tuneva.exe';
+            window.location.href = DOWNLOAD_LINKS.pc;
         }
     }
 
     function downloadApp() {
         try {
             const a = document.createElement('a');
-            a.href = '/download/Tuneva.apk';
+            a.href = DOWNLOAD_LINKS.apk;
             a.setAttribute('download', 'Tuneva.apk');
             document.body.appendChild(a);
             a.click();
             a.remove();
         } catch (e) {
-            window.location.href = '/download/Tuneva.apk';
+            window.location.href = DOWNLOAD_LINKS.apk;
         }
     }
 
