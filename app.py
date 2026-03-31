@@ -8,6 +8,7 @@ import random
 import os
 from stream_cache import get_stream
 import requests
+import re
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from bson import ObjectId
@@ -1018,9 +1019,10 @@ def admin():
             if not url or not language or not playlist_name:
                 error = "Playlist URL, language and playlist name are required."
             else:
+                # Match playlist name case-insensitively so duplicates merge
                 existing = playlists.find_one({
                     "language": language,
-                    "playlist_name": playlist_name
+                    "playlist_name": {"$regex": f'^{re.escape(playlist_name)}$', "$options": "i"}
                 })
 
                 if existing:
@@ -1065,9 +1067,11 @@ def admin():
                     "blocked": False
                 }
 
+                # Match playlist name case-insensitively so adding a song
+                # with an existing playlist name appends to the existing playlist.
                 existing = playlists.find_one({
                     "language": language,
-                    "playlist_name": playlist_name
+                    "playlist_name": {"$regex": f'^{re.escape(playlist_name)}$', "$options": "i"}
                 })
 
                 if existing:

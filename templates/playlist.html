@@ -650,6 +650,13 @@ audio.onerror = () => {
 
                 row.addEventListener("click", () => {
                     closeViewPlaylistSongsModal(true);
+                    // Ensure the queue is set to this playlist so shuffle
+                    // only operates within the playlist being viewed.
+                    try {
+                        setQueueFromPlaylist(playlistName, entries);
+                    } catch (e) {
+                        console.error('Failed to set queue for playlist view', e);
+                    }
                     openNowPlaying();
                     loadSong(song.youtube_url).catch((error) => {
                         console.error(error);
