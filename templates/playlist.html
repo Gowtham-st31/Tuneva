@@ -20,8 +20,8 @@
             <div class="brand-block">
                 <div class="brand-mark" aria-hidden="true">♫</div>
                 <div>
-                    <p class="brand-title">MusicHub</p>
-                    <p class="brand-subtitle">Web Player</p>
+                    <p class="brand-title">Tuneva</p>
+                    <p class="brand-subtitle">Premium Web Player</p>
                 </div>
             </div>
 
@@ -47,8 +47,8 @@
 
         <main class="spotify-main" aria-label="Music content">
             <header class="spotify-topbar">
-                <button id="sidebarToggle" class="mobile-menu-btn" type="button" aria-label="Toggle sidebar">☰</button>
-                        <div id="streamStatusBadge" class="stream-status-badge" aria-live="polite" title="Streaming status">Checking...</div>
+                <button id="sidebarToggle" class="mobile-menu-btn" type="button" aria-label="Toggle sidebar" aria-controls="spotifySidebar" aria-expanded="false">☰</button>
+                <div id="streamStatusBadge" class="stream-status-badge" aria-live="polite" title="Streaming status">Checking...</div>
                 <div class="topbar-search-wrap">
                     <input id="globalSearch" class="topbar-search" type="search" placeholder="Search songs, playlists, artists" aria-label="Search">
                 </div>
@@ -69,7 +69,7 @@
 
             <section id="trending" class="content-section" aria-label="Trending songs">
                 <div class="content-heading">
-                    <h2>Songs For You</h2>
+                    <h2>Trending Songs</h2>
                     <p id="songsCounter" class="muted-text"></p>
                 </div>
                 <div id="trendingRow" class="h-scroll-row"></div>
@@ -85,13 +85,14 @@
 
             <section class="content-section" aria-label="Recommended songs">
                 <div class="content-heading">
-                    <h2>Recommended</h2>
+                    <h2>Made For You</h2>
                     <p class="muted-text">Because you listened recently</p>
                 </div>
                 <div id="recommendedRow" class="h-scroll-row"></div>
             </section>
         </main>
     </div>
+    <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
 
     <div id="createPlaylistModal" class="app-modal" hidden aria-hidden="true">
         <div class="app-modal-backdrop" data-close-modal="true"></div>
@@ -161,7 +162,8 @@
                 </div>
                 <p class="app-modal-subtitle">Download Local Engine for best playback (no skips)</p>
                 <div class="app-modal-actions">
-                    <a href="https://drive.google.com/uc?export=download&id=1AwH870gvywSzLwSueCo5Xbw_9xLV2BXT"
+                          <a id="downloadEngineAction"
+                              href="https://drive.google.com/uc?export=download&id=1AwH870gvywSzLwSueCo5Xbw_9xLV2BXT"
                        download
                        class="btn btn-primary">
                        💻 Download for PC
@@ -180,7 +182,8 @@
                 </div>
                 <p class="app-modal-subtitle">Install Tuneva App for smooth playback (no skips)</p>
                 <div class="app-modal-actions">
-                    <a href="https://drive.google.com/uc?export=download&id=1yrQmMX4Hazl-eX1ZBSzoXXmWUCXerJLo"
+                          <a id="downloadAppAction"
+                              href="https://drive.google.com/uc?export=download&id=1yrQmMX4Hazl-eX1ZBSzoXXmWUCXerJLo"
                        download
                        class="btn btn-success">
                        📱 Download APK
@@ -215,6 +218,25 @@
     </section>
 
     <div id="toast" class="app-toast" hidden></div>
+
+    <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Mobile navigation">
+        <button id="mNavHome" class="mobile-nav-item is-active" type="button" data-nav="home" aria-label="Home">
+            <span aria-hidden="true">⌂</span>
+            Home
+        </button>
+        <button id="mNavSearch" class="mobile-nav-item" type="button" data-nav="search" aria-label="Search">
+            <span aria-hidden="true">⌕</span>
+            Search
+        </button>
+        <button id="mNavLibrary" class="mobile-nav-item" type="button" data-nav="library" aria-label="Library">
+            <span aria-hidden="true">♫</span>
+            Library
+        </button>
+        <button id="mNavNow" class="mobile-nav-item" type="button" data-nav="now" aria-label="Now playing">
+            <span aria-hidden="true">▶</span>
+            Now
+        </button>
+    </nav>
 
     <aside class="bottom-player" aria-live="polite">
         <div class="player-track-meta">
@@ -1781,6 +1803,128 @@ audio.load();
             unlockUiFallback();
         }
     }, 2500);
+    });
+    </script>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const shell = document.getElementById("spotifyShell");
+        const sidebarToggle = document.getElementById("sidebarToggle");
+        const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+        const sideNavRoot = document.querySelector(".side-nav");
+
+        const desktopNavHome = document.getElementById("navHome");
+        const desktopNavSearch = document.getElementById("navSearch");
+        const desktopNavLibrary = document.getElementById("navLibrary");
+
+        const mobileNavHome = document.getElementById("mNavHome");
+        const mobileNavSearch = document.getElementById("mNavSearch");
+        const mobileNavLibrary = document.getElementById("mNavLibrary");
+        const mobileNavNow = document.getElementById("mNavNow");
+
+        const nowPlayingScreen = document.getElementById("nowPlayingScreen");
+        const playerTrackMeta = document.querySelector(".player-track-meta");
+
+        function syncSidebarState() {
+            if (!shell || !sidebarToggle) {
+                return;
+            }
+            sidebarToggle.setAttribute("aria-expanded", String(shell.classList.contains("sidebar-open")));
+        }
+
+        function closeSidebarDrawer() {
+            if (!shell) {
+                return;
+            }
+            shell.classList.remove("sidebar-open");
+            syncSidebarState();
+        }
+
+        function openNowPlayingScreen() {
+            if (!nowPlayingScreen) {
+                return;
+            }
+            nowPlayingScreen.hidden = false;
+            requestAnimationFrame(() => {
+                nowPlayingScreen.classList.add("is-open");
+            });
+        }
+
+        function syncMobileNavState() {
+            const activeDesktop = document.querySelector(".side-nav-item.is-active")?.dataset.nav || "home";
+            [mobileNavHome, mobileNavSearch, mobileNavLibrary].forEach((btn) => {
+                if (!btn) {
+                    return;
+                }
+                btn.classList.toggle("is-active", btn.dataset.nav === activeDesktop);
+            });
+
+            if (mobileNavNow) {
+                mobileNavNow.classList.toggle("is-active", !nowPlayingScreen?.hidden);
+            }
+        }
+
+        const navMap = [
+            { mobile: mobileNavHome, desktop: desktopNavHome },
+            { mobile: mobileNavSearch, desktop: desktopNavSearch },
+            { mobile: mobileNavLibrary, desktop: desktopNavLibrary }
+        ];
+
+        navMap.forEach(({ mobile, desktop }) => {
+            if (!mobile || !desktop) {
+                return;
+            }
+            mobile.addEventListener("click", () => {
+                desktop.click();
+                closeSidebarDrawer();
+                syncMobileNavState();
+            });
+        });
+
+        if (mobileNavNow) {
+            mobileNavNow.addEventListener("click", () => {
+                openNowPlayingScreen();
+                closeSidebarDrawer();
+                syncMobileNavState();
+            });
+        }
+
+        if (playerTrackMeta) {
+            playerTrackMeta.addEventListener("click", () => {
+                if (window.innerWidth <= 860) {
+                    openNowPlayingScreen();
+                    syncMobileNavState();
+                }
+            });
+        }
+
+        if (sidebarBackdrop) {
+            sidebarBackdrop.addEventListener("click", closeSidebarDrawer);
+        }
+
+        if (shell) {
+            const shellObserver = new MutationObserver(syncSidebarState);
+            shellObserver.observe(shell, { attributes: true, attributeFilter: ["class"] });
+        }
+
+        if (sideNavRoot) {
+            const navObserver = new MutationObserver(syncMobileNavState);
+            navObserver.observe(sideNavRoot, { subtree: true, attributes: true, attributeFilter: ["class"] });
+        }
+
+        if (nowPlayingScreen) {
+            const nowPlayingObserver = new MutationObserver(syncMobileNavState);
+            nowPlayingObserver.observe(nowPlayingScreen, { attributes: true, attributeFilter: ["class", "hidden"] });
+        }
+
+        window.addEventListener("resize", () => {
+            if (window.innerWidth > 1060) {
+                closeSidebarDrawer();
+            }
+        });
+
+        syncSidebarState();
+        syncMobileNavState();
     });
     </script>
 </body>

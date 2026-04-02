@@ -7,20 +7,30 @@
 	<link rel="icon" type="image/png" href="{{ url_for('static', filename='tab-logo.png') }}">
 	<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-	<h2>Select Languages</h2>
+<body class="choice-page">
+	<main class="choice-shell">
+		<section class="choice-card" aria-label="Select preferred languages">
+			<div class="choice-head">
+				<p class="brand-kicker">Personalized Music Feed</p>
+				<h1>Select Languages</h1>
+				<p>Choose your favorite languages so Tuneva can shape your recommendations.</p>
+			</div>
 
-	<form method="POST">
-		<div class="language-options">
-			{% for lang in (available_languages or []) %}
-			<label class="language-option">
-				<input type="checkbox" name="language" value="{{ lang }}" {% if lang in (selected_languages or []) %}checked{% endif %}>
-				<span>{{ lang|title }}</span>
-			</label>
-			{% endfor %}
-		</div>
+			<form method="POST" class="choice-form">
+				<div class="language-options">
+					{% for lang in (available_languages or []) %}
+					<label class="language-option">
+						<input type="checkbox" name="language" value="{{ lang }}" {% if lang in (selected_languages or []) %}checked{% endif %}>
+						<span>{{ lang|title }}</span>
+					</label>
+					{% endfor %}
+				</div>
 
-		<button type="submit">Continue</button>
-	</form>
+				<div class="choice-actions">
+					<button class="primary-btn" type="submit">Continue</button>
+				</div>
+			</form>
+		</section>
+	</main>
 </body>
 </html>
