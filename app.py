@@ -1,17 +1,20 @@
 print("🔥 crt APP.PY LOADED")
 from flask import Flask, render_template, request, redirect, session, jsonify, send_from_directory, abort
 from flask_cors import CORS
-from db import users, playlists, otp_requests, user_playlists
+from db import users, playlists, otp_requests, user_playlists, songs, sync_logs
 from extractor import extract_playlist
 import yt_dlp
 import random
 import os
+import threading
 from stream_cache import get_stream
 import requests
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 from bson import ObjectId
+from apscheduler.schedulers.background import BackgroundScheduler
+from zoneinfo import ZoneInfo
 
 
 def _load_env_file():
@@ -122,6 +125,10 @@ ADMIN_EMAILS = {
 
 LIVE_PLAYLIST_CACHE_TTL_SECONDS = 180
 _live_playlist_cache = {}
+
+SYNC_TIMEZONE = ZoneInfo("Asia/Kolkata")
+_playlist_sync_scheduler = None
+_playlist_sync_lock = threading.Lock()
 
 
 def _extract_video_id(youtube_url):
@@ -261,6 +268,298 @@ def _extract_playlist_live_cached(source_url, fallback_videos=None):
         return videos
     except Exception:
         return fallback_videos or []
+
+
+def _song_artist(video):
+    for key in ("artist", "channel", "uploader", "creator"):
+        value = video.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _build_sync_candidates(playlist_doc, latest_videos):
+    existing_videos = playlist_doc.get("videos", []) or []
+    existing_keys = {
+        _video_key(v.get("youtube_url"))
+        for v in existing_videos
+        if v and v.get("youtube_url")
+    }
+    blocked_keys = set(
+        k for k in (_video_key(u) for u in (playlist_doc.get("blocked_urls") or []))
+        if k
+    )
+
+    playlist_id = str(playlist_doc.get("_id"))
+    playlist_name = playlist_doc.get("playlist_name") or playlist_doc.get("language") or "Playlist"
+    language = str(playlist_doc.get("language", "")).strip().lower()
+    source_url = str(playlist_doc.get("source_url", "")).strip()
+
+    new_playlist_videos = []
+    new_song_docs = []
+
+    for raw_video in latest_videos or []:
+        if not raw_video:
+            continue
+
+        youtube_url = str(raw_video.get("youtube_url") or "").strip()
+        song_key = _video_key(youtube_url)
+        if not song_key or song_key in existing_keys:
+            continue
+
+        existing_keys.add(song_key)
+        now = datetime.utcnow()
+        title = str(raw_video.get("title") or youtube_url).strip()
+        artist = _song_artist(raw_video)
+        thumbnail = _resolve_thumbnail(raw_video)
+        blocked = bool(song_key in blocked_keys or bool(raw_video.get("blocked", False)))
+
+        playlist_video_doc = {
+            "title": title,
+            "artist": artist,
+            "youtube_url": youtube_url,
+            "thumbnail": thumbnail,
+            "playlist_title": playlist_name,
+            "blocked": blocked,
+            "created_at": now,
+            "updated_at": now,
+            "imported_at": now
+        }
+        new_playlist_videos.append(playlist_video_doc)
+
+        new_song_docs.append({
+            "playlist_id": playlist_id,
+            "playlist_name": playlist_name,
+            "language": language,
+            "source_url": source_url,
+            "youtube_key": song_key,
+            "youtube_url": youtube_url,
+            "title": title,
+            "artist": artist,
+            "thumbnail": thumbnail,
+            "blocked": blocked,
+            "created_at": now,
+            "updated_at": now,
+            "imported_at": now
+        })
+
+    return new_playlist_videos, new_song_docs
+
+
+def _write_sync_log(log_doc):
+    try:
+        sync_logs.insert_one(log_doc)
+    except Exception as exc:
+        print("[sync] Failed to write sync log:", str(exc))
+
+
+def _sync_single_playlist(playlist_doc, trigger="daily"):
+    playlist_object_id = playlist_doc.get("_id")
+    playlist_id = str(playlist_object_id)
+    playlist_name = playlist_doc.get("playlist_name") or playlist_doc.get("language") or "Playlist"
+    source_url = str(playlist_doc.get("source_url", "")).strip()
+    checked_at = datetime.utcnow()
+
+    if not source_url:
+        _write_sync_log({
+            "playlist_id": playlist_id,
+            "playlist_name": playlist_name,
+            "new_songs": 0,
+            "checked_at": checked_at,
+            "trigger": trigger,
+            "status": "skipped_no_source"
+        })
+        return {"playlist_id": playlist_id, "new_songs": 0, "status": "skipped_no_source"}
+
+    try:
+        latest_videos = extract_playlist(source_url)
+        new_playlist_videos, new_song_docs = _build_sync_candidates(playlist_doc, latest_videos)
+
+        if new_playlist_videos:
+            playlists.update_one(
+                {"_id": playlist_object_id},
+                {
+                    "$push": {"videos": {"$each": new_playlist_videos}},
+                    "$set": {"updated_at": datetime.utcnow()}
+                }
+            )
+
+            for song_doc in new_song_docs:
+                songs.update_one(
+                    {
+                        "playlist_id": song_doc["playlist_id"],
+                        "youtube_key": song_doc["youtube_key"]
+                    },
+                    {
+                        "$setOnInsert": song_doc,
+                        "$set": {
+                            "playlist_name": song_doc["playlist_name"],
+                            "language": song_doc["language"],
+                            "source_url": song_doc["source_url"],
+                            "youtube_url": song_doc["youtube_url"],
+                            "title": song_doc["title"],
+                            "artist": song_doc["artist"],
+                            "thumbnail": song_doc["thumbnail"],
+                            "blocked": song_doc["blocked"],
+                            "updated_at": datetime.utcnow()
+                        }
+                    },
+                    upsert=True
+                )
+
+        new_count = len(new_playlist_videos)
+        _write_sync_log({
+            "playlist_id": playlist_id,
+            "playlist_name": playlist_name,
+            "new_songs": new_count,
+            "checked_at": checked_at,
+            "trigger": trigger,
+            "status": "ok"
+        })
+        return {"playlist_id": playlist_id, "new_songs": new_count, "status": "ok"}
+    except Exception as exc:
+        _write_sync_log({
+            "playlist_id": playlist_id,
+            "playlist_name": playlist_name,
+            "new_songs": 0,
+            "checked_at": checked_at,
+            "trigger": trigger,
+            "status": "error",
+            "error": str(exc)
+        })
+        return {"playlist_id": playlist_id, "new_songs": 0, "status": "error", "error": str(exc)}
+
+
+def _sync_all_playlists_once(trigger="daily"):
+    summary = {
+        "ok": True,
+        "checked": 0,
+        "new_songs": 0,
+        "errors": 0,
+        "trigger": trigger
+    }
+
+    try:
+        playlist_cursor = playlists.find(
+            {},
+            {
+                "videos": 1,
+                "language": 1,
+                "playlist_name": 1,
+                "source_url": 1,
+                "blocked_urls": 1
+            }
+        )
+
+        for playlist_doc in playlist_cursor:
+            summary["checked"] += 1
+            result = _sync_single_playlist(playlist_doc, trigger=trigger)
+            summary["new_songs"] += int(result.get("new_songs") or 0)
+            if result.get("status") == "error":
+                summary["errors"] += 1
+
+        return summary
+    except Exception as exc:
+        print("[sync] Batch sync failed:", str(exc))
+        return {
+            "ok": False,
+            "checked": summary["checked"],
+            "new_songs": summary["new_songs"],
+            "errors": summary["errors"] + 1,
+            "trigger": trigger,
+            "error": str(exc)
+        }
+
+
+def _run_playlist_sync_job(trigger="daily"):
+    if not _playlist_sync_lock.acquire(blocking=False):
+        return {
+            "ok": False,
+            "checked": 0,
+            "new_songs": 0,
+            "errors": 0,
+            "trigger": trigger,
+            "error": "Playlist sync already running"
+        }
+
+    try:
+        return _sync_all_playlists_once(trigger=trigger)
+    except Exception as exc:
+        print("[sync] Unexpected scheduler error:", str(exc))
+        return {
+            "ok": False,
+            "checked": 0,
+            "new_songs": 0,
+            "errors": 1,
+            "trigger": trigger,
+            "error": str(exc)
+        }
+    finally:
+        _playlist_sync_lock.release()
+
+
+def _ist_today_utc_bounds():
+    now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
+    now_ist = now_utc.astimezone(SYNC_TIMEZONE)
+    ist_day_start = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    ist_day_end = ist_day_start + timedelta(days=1)
+
+    start_utc = ist_day_start.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = ist_day_end.astimezone(timezone.utc).replace(tzinfo=None)
+    return start_utc, end_utc
+
+
+def _get_sync_dashboard_data():
+    start_utc, end_utc = _ist_today_utc_bounds()
+    today_cursor = sync_logs.find({"checked_at": {"$gte": start_utc, "$lt": end_utc}})
+    new_songs_today = sum(max(0, int(log.get("new_songs") or 0)) for log in today_cursor)
+
+    recent_logs = list(sync_logs.find({}).sort("checked_at", -1).limit(12))
+    for log in recent_logs:
+        if log.get("playlist_id") is not None:
+            log["playlist_id"] = str(log.get("playlist_id"))
+
+    return new_songs_today, recent_logs
+
+
+def _should_start_sync_scheduler():
+    if os.getenv("DISABLE_PLAYLIST_SYNC_SCHEDULER") == "1":
+        return False
+
+    # Avoid starting scheduler in Flask debug reloader parent process.
+    if os.getenv("FLASK_DEBUG") == "1" and os.getenv("WERKZEUG_RUN_MAIN") != "true":
+        return False
+
+    return True
+
+
+def _start_playlist_sync_scheduler():
+    global _playlist_sync_scheduler
+
+    if _playlist_sync_scheduler and _playlist_sync_scheduler.running:
+        return
+
+    if not _should_start_sync_scheduler():
+        return
+
+    try:
+        scheduler = BackgroundScheduler(timezone=SYNC_TIMEZONE)
+        scheduler.add_job(
+            func=lambda: _run_playlist_sync_job(trigger="daily"),
+            trigger="cron",
+            hour=9,
+            minute=0,
+            id="daily_playlist_sync_9am_ist",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600
+        )
+        scheduler.start()
+        _playlist_sync_scheduler = scheduler
+        print("[sync] Daily playlist sync scheduler started for 09:00 IST.")
+    except Exception as exc:
+        print("[sync] Failed to start scheduler:", str(exc))
 
 
 def _get_videos_for_languages(languages):
@@ -1005,8 +1304,8 @@ def admin():
             {"$set": {"is_admin": True}}
         )
 
-    message = None
-    error = None
+    message = session.pop("admin_message", None)
+    error = session.pop("admin_error", None)
 
     if request.method == "POST":
         action = request.form.get("action", "import_playlist").strip().lower()
@@ -1224,6 +1523,8 @@ def admin():
         admin_playlists_view.append(p_view)
         total_admin_songs += len(songs_list)
 
+    sync_new_songs_today, recent_sync_logs = _get_sync_dashboard_data()
+
     return render_template(
         "admin.html",
         message=message,
@@ -1233,9 +1534,40 @@ def admin():
         live_users=live_users,
         total_playlists=len(admin_playlists),
         total_songs=total_admin_songs,
+        sync_new_songs_today=sync_new_songs_today,
+        recent_sync_logs=recent_sync_logs,
         admin_playlists=admin_playlists_view,
         available_languages=AVAILABLE_LANGUAGES
     )
+
+
+@app.route("/admin/sync-now", methods=["POST"])
+def admin_sync_now():
+    need_login = _require_login_redirect()
+    if need_login:
+        return need_login
+
+    current_user = _get_current_user()
+    if not _is_admin_user(current_user):
+        return redirect("/playlist")
+
+    result = _run_playlist_sync_job(trigger="manual")
+    if result.get("ok"):
+        checked = int(result.get("checked") or 0)
+        new_songs = int(result.get("new_songs") or 0)
+        errors = int(result.get("errors") or 0)
+        session["admin_message"] = (
+            f"Sync complete: {new_songs} new songs imported after checking {checked} playlists"
+            f" (errors: {errors})."
+        )
+    else:
+        session["admin_error"] = f"Sync failed: {result.get('error') or 'Unknown error'}"
+
+    return redirect("/admin")
+
+
+_start_playlist_sync_scheduler()
+
 print("routes:")
 print(app.url_map)
 
