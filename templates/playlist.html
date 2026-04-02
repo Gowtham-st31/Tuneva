@@ -10,7 +10,7 @@
 <body class="playlist-page startup-loading">
     <div id="startupLoader" class="startup-loader" aria-live="polite" aria-label="Loading Tuneva">
         <div class="startup-loader-inner">
-            <img src="{{ url_for('static', filename='tuneva-logo.png') }}" alt="Tuneva" class="startup-logo">
+            <img src="{{ url_for('static', filename='tab-logo.png') }}" alt="Tuneva" class="startup-logo app-logo">
             <p class="startup-loader-text">Loading your music experience...</p>
         </div>
     </div>
@@ -18,7 +18,7 @@
     <div class="spotify-shell" id="spotifyShell">
         <aside class="spotify-sidebar" id="spotifySidebar" aria-label="Sidebar navigation">
             <div class="brand-block">
-                <div class="brand-mark" aria-hidden="true">♫</div>
+                <img src="{{ url_for('static', filename='tab-logo.png') }}" alt="Tuneva" class="app-logo" />
                 <div>
                     <p class="brand-title">Tuneva</p>
                     <p class="brand-subtitle">Premium Web Player</p>
@@ -48,6 +48,7 @@
         <main class="spotify-main" aria-label="Music content">
             <header class="spotify-topbar">
                 <button id="sidebarToggle" class="mobile-menu-btn" type="button" aria-label="Toggle sidebar" aria-controls="spotifySidebar" aria-expanded="false">☰</button>
+                <img src="{{ url_for('static', filename='tab-logo.png') }}" alt="Tuneva" class="app-logo-mini" />
                 <div id="streamStatusBadge" class="stream-status-badge" aria-live="polite" title="Streaming status">Checking...</div>
                 <div class="topbar-search-wrap">
                     <input id="globalSearch" class="topbar-search" type="search" placeholder="Search songs, playlists, artists" aria-label="Search">
@@ -162,13 +163,13 @@
                 </div>
                 <p class="app-modal-subtitle">Download Local Engine for best playback (no skips)</p>
                 <div class="app-modal-actions">
-                          <a id="downloadEngineAction"
-                              href="https://drive.google.com/uc?export=download&id=1AwH870gvywSzLwSueCo5Xbw_9xLV2BXT"
-                       download
+                    <a id="downloadEngineAction"
+                       data-download-href="https://drive.google.com/uc?export=download&id=1AwH870gvywSzLwSueCo5Xbw_9xLV2BXT"
+                       href="#"
                        class="btn btn-primary">
-                       💻 Download for PC
+                       💻 Checking...
                     </a>
-                    <button id="downloadEngineContinue" class="app-modal-btn secondary" type="button">Continue without it</button>
+                    <button id="downloadEngineContinue" class="app-modal-btn secondary" type="button">Continue with Web</button>
                 </div>
             </div>
         </div>
@@ -182,13 +183,33 @@
                 </div>
                 <p class="app-modal-subtitle">Install Tuneva App for smooth playback (no skips)</p>
                 <div class="app-modal-actions">
-                          <a id="downloadAppAction"
-                              href="https://drive.google.com/uc?export=download&id=1yrQmMX4Hazl-eX1ZBSzoXXmWUCXerJLo"
-                       download
+                    <a id="downloadAppAction"
+                       data-download-href="https://drive.google.com/uc?export=download&id=1yrQmMX4Hazl-eX1ZBSzoXXmWUCXerJLo"
+                       href="#"
                        class="btn btn-success">
-                       📱 Download APK
+                       📱 Checking...
                     </a>
-                    <button id="downloadAppContinue" class="app-modal-btn secondary" type="button">Continue in browser</button>
+                    <button id="downloadAppContinue" class="app-modal-btn secondary" type="button">Continue with Web</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Web Warning Modal -->
+        <div id="webWarningModal" class="app-modal" hidden aria-hidden="true">
+            <div class="app-modal-backdrop" data-close-web-warning="true"></div>
+            <div class="app-modal-card warning-modal" role="dialog" aria-modal="true" aria-labelledby="webWarningTitle">
+                <div class="app-modal-header" style="flex-direction:column; align-items:center; gap:8px;">
+                    <img src="{{ url_for('static', filename='tab-logo.png') }}" alt="Tuneva" class="app-logo in-modal">
+                    <button id="closeWebWarningBtn" class="app-modal-close" type="button" aria-label="Close modal">✕</button>
+                </div>
+                <div style="text-align:center; padding: 6px 0 0;">
+                    <div class="warning-icon" aria-hidden="true">⚠️</div>
+                    <h2 id="webWarningTitle">Continue with Web</h2>
+                    <p class="app-modal-subtitle" style="margin-top:8px;">Without installing Tuneva App / EXE, songs cannot be played. Please install the app for full playback support.</p>
+                    <div class="app-modal-actions" style="justify-content:center; margin-top:12px;">
+                        <button id="warningInstallNow" class="app-modal-btn primary">Install Now</button>
+                        <button id="warningContinueAnyway" class="app-modal-btn secondary">Continue Anyway</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1926,6 +1947,155 @@ audio.load();
         syncSidebarState();
         syncMobileNavState();
     });
+    </script>
+
+    <script>
+    (function(){
+        // App / Engine detection and Web warning flow
+        const downloadEngineAction = document.getElementById('downloadEngineAction');
+        const downloadAppAction = document.getElementById('downloadAppAction');
+        const downloadEngineContinue = document.getElementById('downloadEngineContinue');
+        const downloadAppContinue = document.getElementById('downloadAppContinue');
+        const downloadEngineModal = document.getElementById('downloadEngineModal');
+        const downloadAppModal = document.getElementById('downloadAppModal');
+        const webWarningModal = document.getElementById('webWarningModal');
+        const closeWebWarningBtn = document.getElementById('closeWebWarningBtn');
+        const warningInstallNow = document.getElementById('warningInstallNow');
+        const warningContinueAnyway = document.getElementById('warningContinueAnyway');
+        const closeDownloadEngineBtn = document.getElementById('closeDownloadEngineBtn');
+        const closeDownloadAppBtn = document.getElementById('closeDownloadAppBtn');
+
+        const isAndroid = /Android/i.test(navigator.userAgent || '');
+
+        function showModal(modal){
+            if(!modal) return;
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden','false');
+            document.body.classList.add('modal-open');
+        }
+
+        function closeModal(modal){
+            if(!modal) return;
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden','true');
+            document.body.classList.remove('modal-open');
+        }
+
+        async function checkLocalEngine(timeout=1000){
+            // Attempt to fetch local engine health endpoint. Use abort for timeout.
+            if(!window.fetch) return false;
+            const controller = new AbortController();
+            const id = setTimeout(()=> controller.abort(), timeout);
+            try{
+                // Use no-cors so a successful connection yields an opaque response instead of CORS error
+                await fetch('http://127.0.0.1:5001/health', {mode: 'no-cors', signal: controller.signal});
+                clearTimeout(id);
+                return true;
+            }catch(e){
+                clearTimeout(id);
+                return false;
+            }
+        }
+
+        function detectAndroidApp(scheme='tuneva', timeout=1200){
+            return new Promise((resolve)=>{
+                if(!isAndroid) return resolve(false);
+                let hidden = false;
+                const onVis = function(){ hidden = true; };
+                document.addEventListener('visibilitychange', onVis);
+                // Try to open via iframe to avoid navigation
+                try{
+                    const ifr = document.createElement('iframe');
+                    ifr.style.display = 'none';
+                    ifr.src = scheme + '://open';
+                    document.body.appendChild(ifr);
+                    setTimeout(()=>{
+                        document.removeEventListener('visibilitychange', onVis);
+                        try{ document.body.removeChild(ifr); }catch(e){}
+                        resolve(!!hidden);
+                    }, timeout);
+                }catch(e){
+                    document.removeEventListener('visibilitychange', onVis);
+                    resolve(false);
+                }
+            });
+        }
+
+        async function refreshButtons(){
+            try{
+                // PC local engine check
+                if(downloadEngineAction){
+                    const engineAvailable = await checkLocalEngine(900);
+                    if(engineAvailable){
+                        downloadEngineAction.textContent = '🚀 Open Tuneva';
+                        downloadEngineAction.href = 'http://127.0.0.1:5001/';
+                        downloadEngineAction.setAttribute('target','_blank');
+                        downloadEngineAction.dataset.available = '1';
+                    } else {
+                        const dl = downloadEngineAction.dataset.downloadHref || downloadEngineAction.getAttribute('href') || '#';
+                        downloadEngineAction.textContent = '💻 Download for PC';
+                        downloadEngineAction.href = dl;
+                        downloadEngineAction.removeAttribute('target');
+                        downloadEngineAction.dataset.available = '0';
+                    }
+                }
+
+                // Android app check
+                if(downloadAppAction){
+                    if(isAndroid){
+                        const installed = await detectAndroidApp('tuneva', 1200);
+                        if(installed){
+                            downloadAppAction.textContent = '📲 Open App';
+                            downloadAppAction.href = 'tuneva://open';
+                            downloadAppAction.dataset.available = '1';
+                        } else {
+                            const dl = downloadAppAction.dataset.downloadHref || downloadAppAction.getAttribute('href') || '#';
+                            downloadAppAction.textContent = '📱 Download APK';
+                            downloadAppAction.href = dl;
+                            downloadAppAction.dataset.available = '0';
+                        }
+                    } else {
+                        // Non-Android: present APK download
+                        const dl = downloadAppAction.dataset.downloadHref || downloadAppAction.getAttribute('href') || '#';
+                        downloadAppAction.textContent = '📱 Download APK';
+                        downloadAppAction.href = dl;
+                        downloadAppAction.dataset.available = '0';
+                    }
+                }
+            }catch(e){
+                console.warn('Download button refresh error', e);
+            }
+        }
+
+        // Initial refresh and periodic polling
+        try{ refreshButtons(); setInterval(refreshButtons, 20000); }catch(e){}
+
+        // Hook continue buttons -> show warning modal
+        downloadEngineContinue && downloadEngineContinue.addEventListener('click', function(){ showModal(webWarningModal); });
+        downloadAppContinue && downloadAppContinue.addEventListener('click', function(){ showModal(webWarningModal); });
+
+        // Web warning modal controls
+        closeWebWarningBtn && closeWebWarningBtn.addEventListener('click', function(){ closeModal(webWarningModal); });
+        warningContinueAnyway && warningContinueAnyway.addEventListener('click', function(){ closeModal(webWarningModal); });
+        warningInstallNow && warningInstallNow.addEventListener('click', function(){
+            closeModal(webWarningModal);
+            // Open the most relevant installer modal
+            if(isAndroid){ showModal(downloadAppModal); }
+            else { showModal(downloadEngineModal); }
+        });
+
+        // Close download modal buttons
+        closeDownloadEngineBtn && closeDownloadEngineBtn.addEventListener('click', function(){ closeModal(downloadEngineModal); });
+        closeDownloadAppBtn && closeDownloadAppBtn.addEventListener('click', function(){ closeModal(downloadAppModal); });
+
+        // Backdrop close bindings (data attributes in templates)
+        document.querySelectorAll('[data-close-download-engine]').forEach(el=> el.addEventListener('click', ()=> closeModal(downloadEngineModal)));
+        document.querySelectorAll('[data-close-download-app]').forEach(el=> el.addEventListener('click', ()=> closeModal(downloadAppModal)));
+        document.querySelectorAll('[data-close-web-warning]').forEach(el=> el.addEventListener('click', ()=> closeModal(webWarningModal)));
+
+        // If user clicks the dynamic anchors, allow default navigation. No extra handling needed.
+
+    })();
     </script>
 </body>
 </html>
