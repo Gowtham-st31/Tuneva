@@ -1106,6 +1106,25 @@ def playlist():
     return render_template("playlist.html", videos=videos, is_premium=is_premium, is_admin=is_admin)
 
 
+@app.route("/liked-songs")
+def liked_songs():
+    need_login = _require_login_redirect()
+    if need_login:
+        return need_login
+
+    user = _get_current_user()
+    if not user:
+        session.pop("user_email", None)
+        return redirect("/")
+
+    videos = _get_prioritized_all_videos(user)
+    return render_template(
+        "liked_songs.html",
+        videos=videos,
+        user_email=session.get("user_email", "guest")
+    )
+
+
 
 # RANDOM NEXT
 @app.route("/next-random")

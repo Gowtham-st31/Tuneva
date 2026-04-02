@@ -409,11 +409,27 @@ body.startup-loading {
 }
 
 .startup-logo {
-    width: min(1020px, 92vw);
-    max-height: 70vh;
+    width: min(220px, 58vw);
+    max-height: 42vh;
     object-fit: contain;
     filter: drop-shadow(0 0 18px rgba(29, 185, 84, 0.54));
     animation: pulse-logo 1600ms ease-in-out infinite;
+}
+
+.app-logo {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    object-fit: contain;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+.app-logo-mini {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    object-fit: contain;
+    display: none;
 }
 
 .startup-loader-text {
@@ -441,7 +457,7 @@ body.startup-loading .bottom-player {
 
 .spotify-shell.is-ready,
 .bottom-player.is-ready {
-    filter: blur(0);
+    filter: none;
 }
 
 .spotify-shell {
@@ -473,26 +489,6 @@ body.startup-loading .bottom-player {
     align-items: center;
     gap: 0.72rem;
     padding: 0.3rem 0.42rem;
-}
-
-.app-logo {
-    width: 44px;
-    height: 44px;
-    object-fit: contain;
-    border-radius: 8px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.45);
-}
-
-.app-logo-mini {
-    width: 34px;
-    height: 34px;
-    object-fit: contain;
-    display: none;
-}
-
-@media (max-width: 980px) {
-    .app-logo-mini { display: inline-block; margin-left: 8px; }
-    .brand-mark { display: none; }
 }
 
 .brand-mark {
@@ -534,6 +530,10 @@ body.startup-loading .bottom-player {
     background: transparent;
     cursor: pointer;
     transition: color 180ms ease, border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.side-nav-link {
+    text-decoration: none;
 }
 
 .side-nav-item:hover,
@@ -793,6 +793,22 @@ body.startup-loading .bottom-player {
     gap: 0.45rem;
 }
 
+.topbar-queue-btn {
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-weight: 800;
+    padding: 0.56rem 0.92rem;
+    cursor: pointer;
+    transition: border-color 170ms ease, background 170ms ease;
+}
+
+.topbar-queue-btn:hover {
+    border-color: rgba(29, 185, 84, 0.6);
+    background: rgba(29, 185, 84, 0.14);
+}
+
 .shuffle-switch {
     display: inline-flex;
     align-items: center;
@@ -1014,8 +1030,15 @@ body.startup-loading .bottom-player {
     text-overflow: ellipsis;
 }
 
-.card-add-btn {
+.media-actions {
     margin-top: 0.55rem;
+    display: grid;
+    gap: 0.34rem;
+}
+
+.card-like-btn,
+.card-queue-btn,
+.card-add-btn {
     width: 100%;
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1026,6 +1049,22 @@ body.startup-loading .bottom-player {
     padding: 0.36rem 0.48rem;
     cursor: pointer;
     transition: background 170ms ease, border-color 170ms ease;
+}
+
+.card-like-btn.is-liked {
+    border-color: rgba(29, 185, 84, 0.66);
+    background: rgba(29, 185, 84, 0.18);
+    color: #ddffe9;
+}
+
+.card-like-btn:hover {
+    border-color: rgba(29, 185, 84, 0.66);
+    background: rgba(29, 185, 84, 0.16);
+}
+
+.card-queue-btn:hover {
+    border-color: rgba(90, 176, 255, 0.72);
+    background: rgba(90, 176, 255, 0.2);
 }
 
 .card-add-btn:hover {
@@ -1133,6 +1172,7 @@ body.startup-loading .bottom-player {
     color: #f3f3f3;
     background: rgba(255, 255, 255, 0.06);
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
     transition: transform 170ms ease, border-color 170ms ease, background 170ms ease;
 }
 
@@ -1152,6 +1192,15 @@ body.startup-loading .bottom-player {
     height: 46px;
     border: 0;
     font-weight: 900;
+    color: #03210f;
+    background: linear-gradient(130deg, #1db954, #48db78);
+    box-shadow: 0 10px 26px rgba(29, 185, 84, 0.35);
+}
+
+.circle-btn-primary:hover,
+.circle-btn-primary:active,
+.circle-btn-primary:focus-visible {
+    border: 0;
     color: #03210f;
     background: linear-gradient(130deg, #1db954, #48db78);
     box-shadow: 0 10px 26px rgba(29, 185, 84, 0.35);
@@ -1282,38 +1331,19 @@ body.modal-open {
     animation: card-rise 220ms ease both;
 }
 
-/* Warning modal (premium style) */
-.warning-modal {
-    background: linear-gradient(180deg, rgba(6,6,6,0.96), rgba(12,12,12,0.98));
-    border: 1px solid rgba(29,185,84,0.14);
-    padding: 1.2rem 1.1rem;
-    width: min(520px, 94vw);
-    text-align: center;
-}
-
-.warning-modal .in-modal {
-    width: 72px;
-    height: 72px;
-    border-radius: 12px;
-    box-shadow: 0 12px 34px rgba(0,0,0,0.6);
-}
-
-.warning-icon {
-    font-size: 40px;
-    margin-top: 4px;
-}
-
-/* Make install button visibly green for warning modal */
-.warning-modal .app-modal-btn.primary {
-    background: linear-gradient(120deg, var(--accent), var(--accent-deep));
-    color: #041e12;
-}
-
 .app-modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.8rem;
+}
+
+.modal-brand-logo {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    object-fit: contain;
+    flex-shrink: 0;
 }
 
 .app-modal-header h2 {
@@ -1377,6 +1407,9 @@ body.modal-open {
 
 .app-modal-btn,
 .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.44rem;
     border-radius: 999px;
     padding: 0.52rem 0.9rem;
     font-size: 0.82rem;
@@ -1398,6 +1431,60 @@ body.modal-open {
     color: #efefef;
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.24);
+}
+
+.btn-logo {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    object-fit: contain;
+}
+
+.warning-modal {
+    width: min(520px, 94vw);
+    border-color: rgba(29, 185, 84, 0.26);
+    background:
+        radial-gradient(circle at 50% -10%, rgba(29, 185, 84, 0.22), transparent 58%),
+        linear-gradient(180deg, rgba(12, 12, 12, 0.98), rgba(8, 8, 8, 0.98));
+    text-align: center;
+    padding: 1.2rem 1rem;
+}
+
+.warning-modal .app-modal-close {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+}
+
+.warning-logo {
+    width: 68px;
+    height: 68px;
+    border-radius: 14px;
+    object-fit: contain;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+}
+
+.warning-icon {
+    margin-top: 0.6rem;
+    font-size: 2rem;
+    line-height: 1;
+    color: #ffd56a;
+}
+
+.warning-copy {
+    margin-top: 0.7rem;
+    color: #e5e5e5;
+    line-height: 1.5;
+}
+
+.warning-actions {
+    justify-content: center;
+    margin-top: 0.95rem;
+}
+
+.warning-actions .app-modal-btn.primary {
+    background: linear-gradient(125deg, #1db954, #37cd67);
+    color: #04210f;
 }
 
 .playlist-songs-list {
@@ -1463,6 +1550,34 @@ body.modal-open {
 .playlist-song-meta span {
     color: var(--text-muted);
     font-size: 0.75rem;
+}
+
+.queue-row {
+    display: grid;
+    grid-template-columns: 34px 44px 1fr auto;
+    align-items: center;
+    gap: 0.58rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: #fff;
+    padding: 0.42rem 0.48rem;
+}
+
+.queue-remove-btn {
+    border: 1px solid rgba(255, 107, 123, 0.48);
+    border-radius: 999px;
+    background: rgba(255, 107, 123, 0.16);
+    color: #ffdbe0;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.28rem 0.6rem;
+    cursor: pointer;
+}
+
+.queue-remove-btn:hover {
+    border-color: rgba(255, 107, 123, 0.7);
+    background: rgba(255, 107, 123, 0.24);
 }
 
 /* Full-screen now playing */
@@ -1583,7 +1698,7 @@ body.modal-open {
     z-index: 40;
     height: 64px;
     display: none;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     border-top: 1px solid var(--line);
     background: rgba(7, 7, 7, 0.95);
     backdrop-filter: blur(12px);
@@ -1599,6 +1714,11 @@ body.modal-open {
     font-size: 0.7rem;
     font-weight: 700;
     cursor: pointer;
+    text-decoration: none;
+}
+
+.mobile-nav-link {
+    text-decoration: none;
 }
 
 .mobile-nav-item span {
@@ -1612,6 +1732,69 @@ body.modal-open {
 
 .mobile-nav-item.is-active span {
     color: #42d46f;
+}
+
+.liked-songs-shell {
+    width: min(1180px, 94vw);
+    margin: 1.2rem auto;
+    padding-bottom: 1rem;
+}
+
+.liked-songs-header {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.liked-songs-header h1 {
+    font-family: "Outfit", "Manrope", sans-serif;
+    font-size: clamp(1.4rem, 2.8vw, 2rem);
+}
+
+.liked-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 0.88rem;
+}
+
+.liked-card-actions {
+    margin-top: 0.55rem;
+    display: grid;
+    gap: 0.34rem;
+}
+
+.liked-open-btn,
+.liked-remove-btn {
+    width: 100%;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #f3f3f3;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 0.36rem 0.48rem;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+}
+
+.liked-open-btn {
+    background: rgba(29, 185, 84, 0.16);
+    border-color: rgba(29, 185, 84, 0.44);
+}
+
+.liked-open-btn:hover {
+    border-color: rgba(29, 185, 84, 0.66);
+    background: rgba(29, 185, 84, 0.24);
+}
+
+.liked-remove-btn {
+    background: rgba(255, 107, 123, 0.16);
+    border-color: rgba(255, 107, 123, 0.44);
+}
+
+.liked-remove-btn:hover {
+    border-color: rgba(255, 107, 123, 0.7);
+    background: rgba(255, 107, 123, 0.24);
 }
 
 /* Standalone player route */
@@ -1947,19 +2130,70 @@ body.modal-open {
 }
 
 @media (max-width: 1060px) {
+    .startup-loader {
+        display: none !important;
+    }
+
+    body.startup-loading .spotify-shell,
+    body.startup-loading .bottom-player {
+        filter: none;
+        pointer-events: auto;
+    }
+
     .spotify-shell {
         grid-template-columns: 1fr;
     }
 
     .spotify-sidebar {
         position: fixed;
-        inset: 0 auto 98px 0;
+        inset: 0 auto 0 0;
         width: min(310px, 86vw);
-        height: auto;
+        height: 100dvh;
+        max-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
         transform: translateX(-102%);
         transition: transform 230ms ease;
-        z-index: 30;
+        z-index: 54;
+        pointer-events: auto;
         border-right: 1px solid var(--line-strong);
+        padding-bottom: calc(170px + env(safe-area-inset-bottom));
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: rgba(10, 10, 10, 0.96);
+    }
+
+    .sidebar-playlists {
+        min-height: auto;
+        display: block;
+    }
+
+    .sidebar-playlist-list {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+    }
+
+    .sidebar-backdrop {
+        z-index: 52;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: rgba(0, 0, 0, 0.44);
+    }
+
+    body.sidebar-open-mobile {
+        overflow: hidden;
+    }
+
+    body.sidebar-open-mobile .bottom-player,
+    body.sidebar-open-mobile .mobile-bottom-nav {
+        opacity: 0;
+        pointer-events: none;
     }
 
     .spotify-shell.sidebar-open .spotify-sidebar {
@@ -1975,6 +2209,10 @@ body.modal-open {
     .mobile-menu-btn {
         display: grid;
         place-items: center;
+    }
+
+    .app-logo-mini {
+        display: inline-block;
     }
 
     .spotify-main {
@@ -2023,7 +2261,7 @@ body.modal-open {
     }
 
     .spotify-sidebar {
-        inset: 0 auto 150px 0;
+        inset: 0 auto 0 0;
     }
 
     .bottom-player {
@@ -2080,7 +2318,7 @@ body.modal-open {
 
 @media (max-width: 620px) {
     .spotify-topbar {
-        grid-template-columns: auto 1fr;
+        grid-template-columns: auto auto 1fr;
     }
 
     .stream-status-badge {
@@ -2166,5 +2404,22 @@ body.modal-open {
     50% {
         transform: scale(1.018);
         filter: drop-shadow(0 0 28px rgba(29, 185, 84, 0.68));
+    }
+}
+
+@media (max-width: 460px) {
+    .warning-modal {
+        padding: 1rem 0.8rem;
+    }
+
+    .warning-logo {
+        width: 58px;
+        height: 58px;
+    }
+
+    .warning-actions {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
     }
 }

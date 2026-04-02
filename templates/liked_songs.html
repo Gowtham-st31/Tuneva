@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liked Songs - Tuneva</title>
+    <link rel="icon" type="image/png" href="/static/tab-logo.png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260402m') }}">
+</head>
+<body class="playlist-page liked-songs-page">
+    <main class="liked-songs-shell" aria-label="Liked songs page">
+        <header class="liked-songs-header">
+            <a class="profile-btn" href="/playlist">Back to Player</a>
+            <h1>Liked Songs</h1>
+            <p id="likedCounter" class="muted-text"></p>
+        </header>
+
+        <section class="content-section" aria-label="Liked songs list">
+            <div id="likedSongsGrid" class="liked-grid"></div>
+        </section>
+    </main>
+
+    <script id="likedVideosData" type="application/json">{{ videos|tojson }}</script>
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const currentUserKey = "{{ user_email|e }}".toLowerCase() || "guest";
+        const STORAGE_KEY = `mw_liked_songs_${currentUserKey}`;
+
+        const rawVideos = JSON.parse(document.getElementById("likedVideosData").textContent || "[]");
+        const songs = rawVideos.map((video, index) => ({
+            id: index,
+            youtube_url: video.youtube_url,
+            title: video.title || "Unknown title",
+            thumbnail: video.thumbnail || "",
+            playlist_title: video.playlist_title || "All Songs"
+        })).filter((song) => !!song.youtube_url);
+
+        const likedSongsGrid = document.getElementById("likedSongsGrid");
+        const likedCounter = document.getElementById("likedCounter");
+        const validSongUrls = new Set(songs.map((song) => song.youtube_url));
+
+        let likedSet = new Set();
+
+        function loadLikedSongs() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+                const filtered = Array.isArray(parsed)
+                    ? parsed.filter((url) => typeof url === "string" && validSongUrls.has(url))
+                    : [];
+                likedSet = new Set(filtered);
+            } catch {
+                likedSet = new Set();
+            }
+        }
+
+        function saveLikedSongs() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(likedSet)));
+        }
+
+        function renderLikedSongs() {
+            likedSongsGrid.innerHTML = "";
+            const likedSongs = songs.filter((song) => likedSet.has(song.youtube_url));
+
+            likedCounter.textContent = `${likedSongs.length} liked song${likedSongs.length === 1 ? "" : "s"}`;
+
+            if (!likedSongs.length) {
+                likedSongsGrid.innerHTML = '<p class="empty-row">No liked songs yet. Open the player and tap Like on any song.</p>';
+                return;
+            }
+
+            likedSongs.forEach((song) => {
+                const card = document.createElement("article");
+                card.className = "media-card song-card";
+                card.innerHTML = `
+                    <div class="media-cover-wrap">
+                        <img class="media-cover" src="${song.thumbnail || ""}" alt="${song.title}">
+                    </div>
+                    <div class="media-meta">
+                        <h3>${song.title}</h3>
+                        <p>${song.playlist_title || "Playlist"}</p>
+                    </div>
+                    <div class="liked-card-actions">
+                        <a class="liked-open-btn" href="/playlist?play=${encodeURIComponent(song.youtube_url)}">Play in Player</a>
+                        <button class="liked-remove-btn" type="button">Remove Like</button>
+                    </div>
+                `;
+
+                const removeBtn = card.querySelector(".liked-remove-btn");
+                removeBtn.addEventListener("click", () => {
+                    likedSet.delete(song.youtube_url);
+                    saveLikedSongs();
+                    renderLikedSongs();
+                });
+
+                likedSongsGrid.appendChild(card);
+            });
+        }
+
+        loadLikedSongs();
+        saveLikedSongs();
+        renderLikedSongs();
+    });
+    </script>
+</body>
+</html>
