@@ -172,23 +172,24 @@ def _video_key(youtube_url):
     Prefer the extracted video id when possible, otherwise return a
     normalized URL string. This is used to compare and store blocked
     entries in a resilient way across different YouTube URL formats.
+
+    Video IDs are normalized to lowercase so keys remain stable even when
+    blocked_urls stores bare IDs and other paths compute keys from full URLs.
     """
     if not youtube_url:
         return None
-    vid = _extract_video_id(youtube_url)
+    raw = str(youtube_url).strip()
+    if not raw:
+        return None
+    vid = _extract_video_id(raw)
     if vid:
-        return vid
-    return str(youtube_url).strip().lower()
+        return str(vid).strip().lower()
+    return raw.lower()
 
 
 def _key_of(youtube_url):
-    """Safe canonical key for a youtube URL (fallback without relying on other helpers)."""
-    if not youtube_url:
-        return None
-    vid = _extract_video_id(youtube_url)
-    if vid:
-        return vid
-    return str(youtube_url).strip().lower()
+    """Backward-compatible alias for canonical video key generation."""
+    return _video_key(youtube_url)
 
 
 def _get_user_languages(user):
@@ -1457,28 +1458,26 @@ def admin():
             is_block = op == "block"
             print(f"[admin.song_action] playlist_id={playlist_id} song_url={song_url} op={op}")
 
-            # Maintain playlist-level blocked_urls for source-based playlists.
-            # Use canonical video keys so different URL formats match correctly.
             try:
-                pl = playlists.find_one({"_id": playlist_id}, {"videos": 1, "blocked_urls": 1})
-                if not pl:
-                    return jsonify({"ok": False, "error": "Playlist not found."}), 404
-
-                # build canonical blocked set
-                blocked_set = set(k for k in (_video_key(u) for u in (pl.get("blocked_urls") or [])) if k)
                 target_key = _video_key(song_url)
                 if not target_key:
                     return jsonify({"ok": False, "error": "Invalid song URL."}), 400
 
-                if is_block:
-                    blocked_set.add(target_key)
-                else:
-                    blocked_set.discard(target_key)
+                # Update blocked_urls atomically to avoid one block action
+                # overwriting another when actions happen close together.
+                block_update = (
+                    {"$addToSet": {"blocked_urls": target_key}, "$set": {"updated_at": datetime.utcnow()}}
+                    if is_block
+                    else {"$pull": {"blocked_urls": target_key}, "$set": {"updated_at": datetime.utcnow()}}
+                )
+                res_block = playlists.update_one({"_id": playlist_id}, block_update)
+                if getattr(res_block, "matched_count", 0) == 0:
+                    return jsonify({"ok": False, "error": "Playlist not found."}), 404
 
-                # persist blocked_urls as canonical keys
-                res_block = playlists.update_one({"_id": playlist_id}, {"$set": {"blocked_urls": list(blocked_set), "updated_at": datetime.utcnow()}})
+                # Re-read latest state and keep per-video blocked flags aligned.
+                pl = playlists.find_one({"_id": playlist_id}, {"videos": 1, "blocked_urls": 1}) or {}
+                blocked_set = set(k for k in (_video_key(u) for u in (pl.get("blocked_urls") or [])) if k)
 
-                # update videos array blocked flags consistently
                 new_videos = []
                 for vv in (pl.get("videos") or []):
                     vv2 = dict(vv)
@@ -1488,12 +1487,13 @@ def admin():
 
                 res_v = playlists.update_one({"_id": playlist_id}, {"$set": {"videos": new_videos, "updated_at": datetime.utcnow()}})
                 print("[admin.song_action] update results:", getattr(res_block, 'raw_result', None), getattr(res_v, 'raw_result', None))
+
+                is_now_blocked = bool(target_key in blocked_set)
+                message = f"Song {'blocked' if is_now_blocked else 'unblocked'}."
+                return jsonify({"ok": True, "message": message, "playlist_id": str(playlist_id), "song_url": song_url, "blocked": is_now_blocked})
             except Exception as e:
                 print("[admin.song_action] update error:", str(e))
                 return jsonify({"ok": False, "error": "Database update failed."}), 500
-
-            message = f"Song {'blocked' if is_block else 'unblocked'}."
-            return jsonify({"ok": True, "message": message, "playlist_id": str(playlist_id), "song_url": song_url, "blocked": is_block})
 
         elif action == "user_action":
             target_email = request.form.get("target_email", "").strip().lower()

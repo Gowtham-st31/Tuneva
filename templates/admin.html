@@ -241,6 +241,9 @@
 				<form method="POST" action="{{ url_for('admin_sync_now') }}">
 					<button class="primary" type="submit">Sync Now</button>
 				</form>
+				<form method="GET" action="{{ url_for('logout') }}">
+					<button class="ghost" type="submit">Logout</button>
+				</form>
 				<span class="sync-note">Daily auto-sync at 9:00 AM IST</span>
 			</div>
 		</header>
@@ -438,7 +441,7 @@
 					<div class="songs-list">
 						{% for p in admin_playlists %}
 							<div class="playlist-block" data-playlist-id="{{ p._id }}">
-								<p class="playlist-row">
+								<div class="playlist-row">
 									<span>
 										<strong>{{ p.playlist_name or 'Untitled playlist' }}</strong>
 										· {{ p.language or 'n/a' }}
@@ -449,12 +452,12 @@
 										<input type="hidden" name="playlist_id" value="{{ p._id }}">
 										<button class="warn" type="submit">Delete</button>
 									</form>
-								</p>
+								</div>
 
 								<div class="songs-list-inner" style="margin-top:8px;">
 									{% if p.songs and p.songs|length %}
 										{% for s in p.songs %}
-											<p class="song-item{% if s.blocked %} struck{% endif %}" data-title="{{ (s.title or s.youtube_url)|lower }}" data-url="{{ s.youtube_url }}">
+											<div class="song-item{% if s.blocked %} struck{% endif %}" data-title="{{ (s.title or s.youtube_url)|lower }}" data-url="{{ s.youtube_url }}">
 												<span class="song-text">{{ loop.index }}. {{ s.title or s.youtube_url }}</span>
 												{% if s.blocked %}<span class="badge blocked">Blocked</span>{% endif %}
 												<form method="POST" onsubmit="return false;" style="display:inline; margin-left:10px;">
@@ -464,7 +467,7 @@
 													<input type="hidden" name="op" value="{{ 'unblock' if s.blocked else 'block' }}">
 													<button type="button" class="song-action-btn {{ 'ghost' if s.blocked else 'warn' }}" data-playlist-id="{{ p._id }}" data-song-url="{{ s.youtube_url }}" data-op="{{ 'unblock' if s.blocked else 'block' }}">{{ 'Unblock' if s.blocked else 'Block' }}</button>
 												</form>
-											</p>
+											</div>
 										{% endfor %}
 									{% else %}
 										<p>No songs in this playlist.</p>
@@ -544,17 +547,36 @@ document.addEventListener('DOMContentLoaded', function(){
 		container.className = 'songs-list';
 		container.id = 'adminFlatSongs';
 		container.style.marginTop = '8px';
-		container.innerHTML = '<p style="margin:6px 0 8px; color: var(--muted)">Flat view: all songs</p>';
+		container.innerHTML = '<p style="margin:6px 0 8px; color: var(--muted)">Flat view: all songs (block/unblock available)</p>';
 		const mainSongsList = document.querySelector('.card-body > .songs-list');
 		mainSongsList.parentNode.insertBefore(container, mainSongsList);
 		return container;
+	}
+
+	function ensureSongActionButton(songItem){
+		if(!songItem || songItem.querySelector('.song-action-btn')) return;
+		const form = songItem.querySelector('form');
+		if(!form) return;
+		const playlistInput = form.querySelector('input[name="playlist_id"]');
+		const songInput = form.querySelector('input[name="song_url"]');
+		const opInput = form.querySelector('input[name="op"]');
+		if(!playlistInput || !songInput || !opInput) return;
+
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.className = `song-action-btn ${opInput.value === 'unblock' ? 'ghost' : 'warn'}`;
+		button.dataset.playlistId = playlistInput.value;
+		button.dataset.songUrl = songInput.value;
+		button.dataset.op = opInput.value;
+		button.textContent = opInput.value === 'unblock' ? 'Unblock' : 'Block';
+		form.appendChild(button);
 	}
 
 	viewToggle && viewToggle.addEventListener('change', function(){
 		if(this.value === 'flat'){
 			if(!flatContainer) flatContainer = createFlatContainer();
 			playlistBlocks.forEach(pb=>{
-				const songs = Array.from(pb.querySelectorAll('.songs-list-inner > p, .songs-list-inner > .song-item'));
+				const songs = Array.from(pb.querySelectorAll('.songs-list-inner > .song-item'));
 				songs.forEach(s=>{
 					if(!s.classList.contains('song-item')){
 						s.classList.add('song-item');
@@ -562,6 +584,11 @@ document.addEventListener('DOMContentLoaded', function(){
 						const form = s.querySelector('form');
 						if(form) s.dataset.url = (form.querySelector('input[name="song_url"]')||{}).value || '';
 					}
+					if(!s.dataset.url){
+						const form = s.querySelector('form');
+						if(form) s.dataset.url = (form.querySelector('input[name="song_url"]')||{}).value || '';
+					}
+					ensureSongActionButton(s);
 					originalParents.set(s, s.parentNode);
 					flatContainer.appendChild(s);
 				});
@@ -647,44 +674,48 @@ document.addEventListener('DOMContentLoaded', function(){
 
 	searchInput && searchInput.addEventListener('input', function(){ applySearch(); });
 
-	// AJAX handlers for song action buttons
-	document.querySelectorAll('.song-action-btn').forEach(btn=>{
-		btn.addEventListener('click', function(ev){
-			ev.preventDefault();
-			ev.stopPropagation();
-			const playlist_id = btn.dataset.playlistId;
-			const song_url = btn.dataset.songUrl;
-			const op = btn.dataset.op;
+	// AJAX handlers for song action buttons (delegated so it also works in flat view)
+	document.addEventListener('click', function(ev){
+		const btn = ev.target && ev.target.closest('.song-action-btn');
+		if(!btn) return;
 
-			const body = new URLSearchParams({ action: 'song_action', playlist_id: playlist_id, song_url: song_url, op: op });
-			fetch(window.location.pathname, {
-				method: 'POST',
-				headers: {'X-Requested-With': 'XMLHttpRequest','Content-Type': 'application/x-www-form-urlencoded'},
-				body: body.toString()
-				}).then(r=>r.json()).then(data=>{
-				if(!data || !data.ok){ alert(data && data.error ? data.error : 'Action failed'); return; }
-				const blocked = data.blocked;
-				const songItem = btn.closest('p, .song-item');
-				if(songItem){
-					songItem.classList.toggle('struck', blocked);
-					let badge = songItem.querySelector('.badge.blocked');
-					if(blocked){
-						if(!badge){ badge = document.createElement('span'); badge.className='badge blocked'; badge.textContent='Blocked'; btn.parentNode.insertBefore(badge, btn); }
-						btn.textContent = 'Unblock';
-						btn.classList.remove('warn'); btn.classList.add('ghost');
-						btn.dataset.op = 'unblock';
-					} else {
-						if(badge) badge.remove();
-						btn.textContent = 'Block';
-						btn.classList.remove('ghost'); btn.classList.add('warn');
-						btn.dataset.op = 'block';
-					}
+		ev.preventDefault();
+		ev.stopPropagation();
+		const playlist_id = btn.dataset.playlistId;
+		const song_url = btn.dataset.songUrl;
+		const op = btn.dataset.op;
+
+		const body = new URLSearchParams({ action: 'song_action', playlist_id: playlist_id, song_url: song_url, op: op });
+		fetch(window.location.pathname, {
+			method: 'POST',
+			headers: {'X-Requested-With': 'XMLHttpRequest','Content-Type': 'application/x-www-form-urlencoded'},
+			body: body.toString()
+			}).then(r=>r.json()).then(data=>{
+			if(!data || !data.ok){ alert(data && data.error ? data.error : 'Action failed'); return; }
+			const blocked = data.blocked;
+				const songItem = btn.closest('.song-item');
+			if(songItem){
+				songItem.classList.toggle('struck', blocked);
+				let badge = songItem.querySelector('.badge.blocked');
+				if(blocked){
+					if(!badge){ badge = document.createElement('span'); badge.className='badge blocked'; badge.textContent='Blocked'; btn.parentNode.insertBefore(badge, btn); }
+					btn.textContent = 'Unblock';
+					btn.classList.remove('warn'); btn.classList.add('ghost');
+					btn.dataset.op = 'unblock';
+				} else {
+					if(badge) badge.remove();
+					btn.textContent = 'Block';
+					btn.classList.remove('ghost'); btn.classList.add('warn');
+					btn.dataset.op = 'block';
 				}
 
-				// Auto-refresh after a brief delay so counts and other server-derived data update
-				window.setTimeout(() => { try { location.reload(); } catch (e) { /* ignore */ } }, 600);
-			}).catch(err=>{ console.error(err); alert('Request failed'); });
-		});
+				const opInput = songItem.querySelector('input[name="op"]');
+				if(opInput) opInput.value = blocked ? 'unblock' : 'block';
+			}
+
+			// Auto-refresh after a brief delay so counts and other server-derived data update
+			window.setTimeout(() => { try { location.reload(); } catch (e) { /* ignore */ } }, 600);
+		}).catch(err=>{ console.error(err); alert('Request failed'); });
 	});
 
 	// initial
