@@ -1322,6 +1322,29 @@ audio.onerror = () => {
         return customPlaylists.find((playlist) => playlist.id === selectedPlaylist) || null;
     }
 
+    function getCustomPlaylistEntries(playlist) {
+        if (!playlist || !Array.isArray(playlist.songs)) {
+            return [];
+        }
+
+        const songUrls = new Set(
+            playlist.songs.filter((url) => typeof url === "string" && url)
+        );
+        const seen = new Set();
+        const entries = [];
+
+        songs.forEach((song) => {
+            const url = song.youtube_url;
+            if (!url || !songUrls.has(url) || seen.has(url)) {
+                return;
+            }
+            seen.add(url);
+            entries.push(song);
+        });
+
+        return entries;
+    }
+
     async function removeSongFromSelectedCustomPlaylist(songUrl) {
         const selectedCustom = getSelectedCustomPlaylist();
         if (!selectedCustom) {
@@ -1352,7 +1375,7 @@ audio.onerror = () => {
         selectedCustom.songs = selectedCustom.songs.filter((url) => url !== songUrl);
         renderSections();
 
-        const remaining = songs.filter((song) => selectedCustom.songs.includes(song.youtube_url));
+        const remaining = getCustomPlaylistEntries(selectedCustom);
         setQueueFromPlaylist(selectedCustom.id, remaining);
         showToast("Song removed from playlist");
     }
@@ -1656,7 +1679,7 @@ audio.onerror = () => {
             listItem.textContent = `${playlist.name} (${playlist.songs.length})`;
             listItem.dataset.playlist = playlist.id;
             listItem.addEventListener("click", () => {
-                const customEntries = songs.filter((song) => playlist.songs.includes(song.youtube_url));
+                const customEntries = getCustomPlaylistEntries(playlist);
                 setQueueFromPlaylist(playlist.id, customEntries);
                 if (customEntries[0] && customEntries[0].youtube_url) {
                     openNowPlaying();
@@ -1685,7 +1708,7 @@ audio.onerror = () => {
             viewBtn.setAttribute("aria-label", `View songs in ${playlist.name}`);
             viewBtn.addEventListener("click", (event) => {
                 event.stopPropagation();
-                const customEntries = songs.filter((song) => playlist.songs.includes(song.youtube_url));
+                const customEntries = getCustomPlaylistEntries(playlist);
                 openViewPlaylistSongsModal(playlist.name, customEntries);
             });
 
@@ -2182,8 +2205,15 @@ audio.load();
                     },
                     body: body.toString()
                 });
-                if (!response.ok) {
+                const data = await response.json().catch(() => ({ ok: false }));
+                if (!response.ok || !data.ok) {
                     throw new Error("add failed");
+                }
+
+                if (data.already_exists) {
+                    showToast("Song already in playlist");
+                    closeAddToPlaylistModal(true);
+                    return;
                 }
             } catch {
                 showToast("Failed to add song");

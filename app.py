@@ -569,7 +569,6 @@ def _get_videos_for_languages(languages):
     cursor = playlists.find({"language": {"$in": languages}})
 
     all_videos = []
-    seen_urls = set()
 
     for playlist_doc in cursor:
         playlist_name = (
@@ -601,6 +600,8 @@ def _get_videos_for_languages(languages):
         else:
             playlist_videos = stored_videos
 
+        seen_in_playlist = set()
+
         for video in playlist_videos:
             if not video:
                 continue
@@ -619,12 +620,12 @@ def _get_videos_for_languages(languages):
                 is_blocked = bool(stored_blocked_map.get(video_key) or (video_key in blocked_urls) or bool(v.get("blocked", False)))
                 v["blocked"] = is_blocked
 
-            # dedupe by canonical key so different URL formats don't duplicate
-            if video_key in seen_urls:
-                continue
-
+            # Deduplicate only inside this playlist. The same song can still
+            # appear in other playlists.
             if video_key:
-                seen_urls.add(video_key)
+                if video_key in seen_in_playlist:
+                    continue
+                seen_in_playlist.add(video_key)
 
             all_videos.append(v)
 
@@ -661,7 +662,6 @@ def _get_prioritized_all_videos(user):
     selected_set, selected_rank, other_rank = _build_language_priority(selected_languages, language_play_counts)
 
     all_videos = []
-    seen_urls = set()
     is_admin = _is_admin_user(user or {})
 
     for playlist_doc in playlists.find({}):
@@ -694,6 +694,8 @@ def _get_prioritized_all_videos(user):
         else:
             playlist_videos = stored_videos
 
+        seen_in_playlist = set()
+
         for video in playlist_videos:
             if not video:
                 continue
@@ -717,12 +719,12 @@ def _get_prioritized_all_videos(user):
             if is_blocked and not is_admin:
                 continue
 
-            # Dedupe by canonical key
-            if video_key in seen_urls:
-                continue
-
+            # Deduplicate only inside this playlist. Keep the same song visible
+            # when it exists in different playlists.
             if video_key:
-                seen_urls.add(video_key)
+                if video_key in seen_in_playlist:
+                    continue
+                seen_in_playlist.add(video_key)
 
             all_videos.append(v)
 
@@ -1279,6 +1281,25 @@ def api_user_playlists():
         if not playlist_id or not song_url:
             return jsonify({"ok": False, "error": "Playlist and song are required"}), 400
 
+        playlist_doc = user_playlists.find_one(
+            {"_id": playlist_id, "user_email": email},
+            {"songs": 1}
+        )
+        if not playlist_doc:
+            return jsonify({"ok": False, "error": "Playlist not found"}), 404
+
+        target_key = _video_key(song_url) or song_url.strip().lower()
+        existing_keys = {
+            _video_key(url) or str(url).strip().lower()
+            for url in (playlist_doc.get("songs") or [])
+            if isinstance(url, str) and url.strip()
+        }
+
+        # Prevent duplicates within one playlist, including different URL
+        # formats of the same YouTube video.
+        if target_key in existing_keys:
+            return jsonify({"ok": True, "already_exists": True})
+
         user_playlists.update_one(
             {"_id": playlist_id, "user_email": email},
             {
@@ -1286,7 +1307,7 @@ def api_user_playlists():
                 "$set": {"updated_at": datetime.utcnow()}
             }
         )
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "already_exists": False})
 
     if action == "remove_song":
         playlist_id = _safe_object_id(request.form.get("playlist_id", ""))
